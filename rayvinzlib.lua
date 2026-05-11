@@ -1284,6 +1284,235 @@ function RayVinzLib:CreateWindow(cfg)
 
     function window:Destroy() self._gui:Destroy() end
 
+    -- ══════════════════════════════════════════
+    -- INTRO ANIMATION
+    -- cfg.Intro = true  (default on)
+    -- cfg.Intro = false (skip)
+    -- ══════════════════════════════════════════
+    if cfg.Intro ~= false then
+        main.Visible = false  -- hide until intro finishes
+
+        -- ── Full-screen intro overlay ─────────
+        local overlay = New("Frame", {
+            Name             = "Intro",
+            Size             = UDim2.new(1, 0, 1, 0),
+            BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+            BackgroundTransparency = 0,
+            ZIndex           = 900,
+            BorderSizePixel  = 0,
+            Parent           = gui
+        })
+
+        -- Subtle grid background
+        New("Frame", {
+            Size = UDim2.new(1,0,1,0),
+            BackgroundTransparency = 1,
+            ZIndex = 901,
+            Parent = overlay
+        })
+
+        -- Scan lines overlay
+        New("Frame", {
+            Size = UDim2.new(1,0,1,0),
+            BackgroundColor3 = Color3.fromRGB(0,0,0),
+            BackgroundTransparency = 0.88,
+            ZIndex = 901,
+            BorderSizePixel = 0,
+            Parent = overlay
+        })
+
+        -- Top accent bar
+        local topAccent = New("Frame", {
+            Size = UDim2.new(0, 0, 0, 1),
+            Position = UDim2.new(0.5, 0, 0.38, -1),
+            BackgroundColor3 = Color3.new(1,1,1),
+            BorderSizePixel = 0, ZIndex = 903, Parent = overlay
+        })
+        Gradient(topAccent, accent, T.AccentAlt, 0)
+
+        -- Bottom accent bar
+        local botAccent = New("Frame", {
+            Size = UDim2.new(0, 0, 0, 1),
+            Position = UDim2.new(0.5, 0, 0.62, 0),
+            BackgroundColor3 = Color3.new(1,1,1),
+            BorderSizePixel = 0, ZIndex = 903, Parent = overlay
+        })
+        Gradient(botAccent, T.AccentAlt, accent, 0)
+
+        -- Icon (if provided)
+        local iconY = cfg.Icon and 0.36 or 0.4
+        if cfg.Icon then
+            local introIcon = New("ImageLabel", {
+                Image = cfg.Icon,
+                BackgroundTransparency = 1,
+                Size = UDim2.new(0, 48, 0, 48),
+                Position = UDim2.new(0.5, -24, 0.33, 0),
+                ImageTransparency = 1,
+                ZIndex = 902, Parent = overlay
+            })
+            Tween(introIcon, { ImageTransparency = 0 }, 0.4)
+        end
+
+        -- Hub name — will glitch-reveal
+        local nameLabel = New("TextLabel", {
+            Text = "",
+            Font = Enum.Font.GothamBlack,
+            TextSize = IsMobile and 28 or 36,
+            TextColor3 = T.Text,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 46),
+            Position = UDim2.new(0, 0, iconY, 0),
+            ZIndex = 902, Parent = overlay
+        })
+
+        -- Subtitle
+        local subLabel = New("TextLabel", {
+            Text = "",
+            Font = Enum.Font.RobotoMono,
+            TextSize = 11,
+            TextColor3 = T.TextDim,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 20),
+            Position = UDim2.new(0, 0, iconY, 50),
+            ZIndex = 902, Parent = overlay
+        })
+
+        -- Progress track
+        local trackW = IsMobile and 180 or 240
+        local progTrack = New("Frame", {
+            Size = UDim2.new(0, trackW, 0, 2),
+            Position = UDim2.new(0.5, -trackW/2, 0.62, 10),
+            BackgroundColor3 = T.Border,
+            BorderSizePixel = 0, ZIndex = 902, Parent = overlay
+        })
+        local progFill = New("Frame", {
+            Size = UDim2.new(0, 0, 1, 0),
+            BackgroundColor3 = Color3.new(1,1,1),
+            BorderSizePixel = 0, ZIndex = 903, Parent = progTrack
+        })
+        Gradient(progFill, accent, T.AccentAlt, 0)
+
+        -- Status text
+        local statusLabel = New("TextLabel", {
+            Text = "INITIALIZING...",
+            Font = Enum.Font.RobotoMono,
+            TextSize = 9,
+            TextColor3 = T.TextDim,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 16),
+            Position = UDim2.new(0, 0, 0.62, 18),
+            ZIndex = 902, Parent = overlay
+        })
+
+        -- Version bottom-right
+        New("TextLabel", {
+            Text = version,
+            Font = Enum.Font.RobotoMono,
+            TextSize = 9,
+            TextColor3 = T.TextDim,
+            TextXAlignment = Enum.TextXAlignment.Right,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, -16, 0, 16),
+            Position = UDim2.new(0, 0, 1, -22),
+            ZIndex = 902, Parent = overlay
+        })
+
+        -- ── RUN THE SEQUENCE ─────────────────
+        task.spawn(function()
+            local GLITCH = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#@!%&?"
+            local titleUp = title:upper()
+
+            -- Expand accent bars
+            Tween(topAccent, { Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 0.38, -1) }, 0.35)
+            Tween(botAccent, { Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 0.62, 0)  }, 0.35)
+            task.wait(0.25)
+
+            -- Glitch reveal title
+            local FRAMES = 22
+            for f = 1, FRAMES do
+                local out = ""
+                local ratio = f / FRAMES
+                for i = 1, #titleUp do
+                    if i / #titleUp <= ratio then
+                        out = out .. titleUp:sub(i, i)
+                    else
+                        local r = math.random(1, #GLITCH)
+                        out = out .. GLITCH:sub(r, r)
+                    end
+                end
+                nameLabel.Text = out
+                -- occasional color glitch
+                if math.random() < 0.25 then
+                    nameLabel.TextColor3 = math.random() < 0.5 and accent or T.AccentAlt
+                else
+                    nameLabel.TextColor3 = T.Text
+                end
+                task.wait(0.032)
+            end
+            nameLabel.Text  = titleUp
+            nameLabel.TextColor3 = T.Text
+            subLabel.Text   = subtitle:upper()
+
+            task.wait(0.1)
+
+            -- Status messages while progress fills
+            local statuses = {
+                "LOADING MODULES...",
+                "CONNECTING...",
+                "VERIFYING...",
+                "READY",
+            }
+            local fillTime = 0.55
+            Tween(progFill, { Size = UDim2.new(1, 0, 1, 0) }, fillTime, Enum.EasingStyle.Quad)
+
+            for i, s in ipairs(statuses) do
+                statusLabel.Text = s
+                task.wait(fillTime / #statuses)
+            end
+
+            task.wait(0.15)
+
+            -- Sweep flash across overlay
+            Sweep(overlay, accent, 0.35)
+            task.wait(0.18)
+
+            -- Contract accent bars back to center
+            Tween(topAccent, { Size = UDim2.new(0, 0, 0, 1), Position = UDim2.new(0.5, 0, 0.38, -1) }, 0.28)
+            Tween(botAccent, { Size = UDim2.new(0, 0, 0, 1), Position = UDim2.new(0.5, 0, 0.62, 0)  }, 0.28)
+
+            -- Fade out overlay
+            Tween(overlay, { BackgroundTransparency = 1 }, 0.3)
+            for _, c in pairs(overlay:GetDescendants()) do
+                if c:IsA("TextLabel") or c:IsA("ImageLabel") then
+                    Tween(c, { TextTransparency = 1, ImageTransparency = 1 }, 0.28)
+                elseif c:IsA("Frame") and c ~= overlay then
+                    Tween(c, { BackgroundTransparency = 1 }, 0.28)
+                end
+            end
+            task.wait(0.32)
+            overlay:Destroy()
+
+            -- ── Pop-in the main window ────────
+            main.Visible  = true
+            main.Size     = UDim2.new(0, WIN_W * 0.6, 0, WIN_H * 0.6)
+            main.Position = UDim2.new(0.5, -(WIN_W * 0.6)/2, 0.5, -(WIN_H * 0.6)/2)
+            main.BackgroundTransparency = 1
+
+            Tween(main, {
+                Size     = UDim2.new(0, WIN_W, 0, WIN_H),
+                Position = UDim2.new(0.5, -WIN_W/2, 0.5, -WIN_H/2),
+                BackgroundTransparency = 0,
+            }, 0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+
+            -- Restore UIStroke after transparency reset
+            local stroke = main:FindFirstChildOfClass("UIStroke")
+            if stroke then
+                stroke.Transparency = 1
+                Tween(stroke, { Transparency = 0.45 }, 0.28)
+            end
+        end)
+    end
+
     return window
 end
 

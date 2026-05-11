@@ -1321,74 +1321,83 @@ function RayVinzLib:CreateWindow(cfg)
             Parent = overlay
         })
 
+        -- Center container — everything lives inside this 220px tall box
+        local CW = IsMobile and 260 or 300
+        local CH = cfg.Icon and 130 or 100
+        local center = New("Frame", {
+            Size = UDim2.new(0, CW, 0, CH),
+            Position = UDim2.new(0.5, -CW/2, 0.5, -CH/2),
+            BackgroundTransparency = 1, ZIndex = 902, Parent = overlay
+        })
+
         -- Top accent bar
         local topAccent = New("Frame", {
             Size = UDim2.new(0, 0, 0, 1),
-            Position = UDim2.new(0.5, 0, 0.38, -1),
+            Position = UDim2.new(0.5, 0, 0, 0),
             BackgroundColor3 = Color3.new(1,1,1),
-            BorderSizePixel = 0, ZIndex = 903, Parent = overlay
+            BorderSizePixel = 0, ZIndex = 903, Parent = center
         })
         Gradient(topAccent, accent, T.AccentAlt, 0)
 
         -- Bottom accent bar
         local botAccent = New("Frame", {
             Size = UDim2.new(0, 0, 0, 1),
-            Position = UDim2.new(0.5, 0, 0.62, 0),
+            Position = UDim2.new(0.5, 0, 1, 0),
             BackgroundColor3 = Color3.new(1,1,1),
-            BorderSizePixel = 0, ZIndex = 903, Parent = overlay
+            BorderSizePixel = 0, ZIndex = 903, Parent = center
         })
         Gradient(botAccent, T.AccentAlt, accent, 0)
 
-        -- Icon (if provided)
-        local iconY = cfg.Icon and 0.36 or 0.4
+        -- Icon (if provided) — small, above title
+        local contentOffY = 8
         if cfg.Icon then
             local introIcon = New("ImageLabel", {
                 Image = cfg.Icon,
                 BackgroundTransparency = 1,
-                Size = UDim2.new(0, 48, 0, 48),
-                Position = UDim2.new(0.5, -24, 0.33, 0),
+                Size = UDim2.new(0, 28, 0, 28),
+                Position = UDim2.new(0.5, -14, 0, contentOffY),
                 ImageTransparency = 1,
-                ZIndex = 902, Parent = overlay
+                ZIndex = 903, Parent = center
             })
             Tween(introIcon, { ImageTransparency = 0 }, 0.4)
+            contentOffY = contentOffY + 34
         end
 
-        -- Hub name — will glitch-reveal
+        -- Hub name — glitch-reveal
         local nameLabel = New("TextLabel", {
             Text = "",
             Font = Enum.Font.GothamBlack,
-            TextSize = IsMobile and 28 or 36,
+            TextSize = IsMobile and 20 or 24,
             TextColor3 = T.Text,
             BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 46),
-            Position = UDim2.new(0, 0, iconY, 0),
-            ZIndex = 902, Parent = overlay
+            Size = UDim2.new(1, 0, 0, 30),
+            Position = UDim2.new(0, 0, 0, contentOffY),
+            ZIndex = 903, Parent = center
         })
 
         -- Subtitle
         local subLabel = New("TextLabel", {
             Text = "",
             Font = Enum.Font.RobotoMono,
-            TextSize = 11,
+            TextSize = 9,
             TextColor3 = T.TextDim,
             BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 20),
-            Position = UDim2.new(0, 0, iconY, 50),
-            ZIndex = 902, Parent = overlay
+            Size = UDim2.new(1, 0, 0, 14),
+            Position = UDim2.new(0, 0, 0, contentOffY + 31),
+            ZIndex = 903, Parent = center
         })
 
         -- Progress track
-        local trackW = IsMobile and 180 or 240
         local progTrack = New("Frame", {
-            Size = UDim2.new(0, trackW, 0, 2),
-            Position = UDim2.new(0.5, -trackW/2, 0.62, 10),
+            Size = UDim2.new(1, 0, 0, 2),
+            Position = UDim2.new(0, 0, 1, -20),
             BackgroundColor3 = T.Border,
-            BorderSizePixel = 0, ZIndex = 902, Parent = overlay
+            BorderSizePixel = 0, ZIndex = 903, Parent = center
         })
         local progFill = New("Frame", {
             Size = UDim2.new(0, 0, 1, 0),
             BackgroundColor3 = Color3.new(1,1,1),
-            BorderSizePixel = 0, ZIndex = 903, Parent = progTrack
+            BorderSizePixel = 0, ZIndex = 904, Parent = progTrack
         })
         Gradient(progFill, accent, T.AccentAlt, 0)
 
@@ -1396,24 +1405,24 @@ function RayVinzLib:CreateWindow(cfg)
         local statusLabel = New("TextLabel", {
             Text = "INITIALIZING...",
             Font = Enum.Font.RobotoMono,
-            TextSize = 9,
+            TextSize = 8,
             TextColor3 = T.TextDim,
             BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 16),
-            Position = UDim2.new(0, 0, 0.62, 18),
-            ZIndex = 902, Parent = overlay
+            Size = UDim2.new(1, 0, 0, 12),
+            Position = UDim2.new(0, 0, 1, -12),
+            ZIndex = 903, Parent = center
         })
 
-        -- Version bottom-right
+        -- Version bottom-right of overlay
         New("TextLabel", {
             Text = version,
             Font = Enum.Font.RobotoMono,
-            TextSize = 9,
+            TextSize = 8,
             TextColor3 = T.TextDim,
             TextXAlignment = Enum.TextXAlignment.Right,
             BackgroundTransparency = 1,
-            Size = UDim2.new(1, -16, 0, 16),
-            Position = UDim2.new(0, 0, 1, -22),
+            Size = UDim2.new(1, -16, 0, 14),
+            Position = UDim2.new(0, 0, 1, -18),
             ZIndex = 902, Parent = overlay
         })
 
@@ -1423,12 +1432,12 @@ function RayVinzLib:CreateWindow(cfg)
             local titleUp = title:upper()
 
             -- Expand accent bars
-            Tween(topAccent, { Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 0.38, -1) }, 0.35)
-            Tween(botAccent, { Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 0.62, 0)  }, 0.35)
-            task.wait(0.25)
+            Tween(topAccent, { Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 0, 0) }, 0.3)
+            Tween(botAccent, { Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 1, 0) }, 0.3)
+            task.wait(0.22)
 
             -- Glitch reveal title
-            local FRAMES = 22
+            local FRAMES = 18
             for f = 1, FRAMES do
                 local out = ""
                 local ratio = f / FRAMES
@@ -1441,55 +1450,50 @@ function RayVinzLib:CreateWindow(cfg)
                     end
                 end
                 nameLabel.Text = out
-                -- occasional color glitch
                 if math.random() < 0.25 then
                     nameLabel.TextColor3 = math.random() < 0.5 and accent or T.AccentAlt
                 else
                     nameLabel.TextColor3 = T.Text
                 end
-                task.wait(0.032)
+                task.wait(0.030)
             end
-            nameLabel.Text  = titleUp
+            nameLabel.Text       = titleUp
             nameLabel.TextColor3 = T.Text
-            subLabel.Text   = subtitle:upper()
+            subLabel.Text        = subtitle:upper()
 
-            task.wait(0.1)
+            task.wait(0.08)
 
-            -- Status messages while progress fills
-            local statuses = {
-                "LOADING MODULES...",
-                "CONNECTING...",
-                "VERIFYING...",
-                "READY",
-            }
-            local fillTime = 0.55
+            -- Progress fill + status messages
+            local statuses  = { "LOADING MODULES...", "CONNECTING...", "VERIFYING...", "READY" }
+            local fillTime  = 0.50
             Tween(progFill, { Size = UDim2.new(1, 0, 1, 0) }, fillTime, Enum.EasingStyle.Quad)
-
-            for i, s in ipairs(statuses) do
+            for _, s in ipairs(statuses) do
                 statusLabel.Text = s
                 task.wait(fillTime / #statuses)
             end
 
-            task.wait(0.15)
+            task.wait(0.12)
 
-            -- Sweep flash across overlay
-            Sweep(overlay, accent, 0.35)
-            task.wait(0.18)
+            -- Sweep flash
+            Sweep(overlay, accent, 0.32)
+            task.wait(0.16)
 
-            -- Contract accent bars back to center
-            Tween(topAccent, { Size = UDim2.new(0, 0, 0, 1), Position = UDim2.new(0.5, 0, 0.38, -1) }, 0.28)
-            Tween(botAccent, { Size = UDim2.new(0, 0, 0, 1), Position = UDim2.new(0.5, 0, 0.62, 0)  }, 0.28)
+            -- Contract bars
+            Tween(topAccent, { Size = UDim2.new(0, 0, 0, 1), Position = UDim2.new(0.5, 0, 0, 0) }, 0.24)
+            Tween(botAccent, { Size = UDim2.new(0, 0, 0, 1), Position = UDim2.new(0.5, 0, 1, 0) }, 0.24)
 
-            -- Fade out overlay
-            Tween(overlay, { BackgroundTransparency = 1 }, 0.3)
+            -- Fade out overlay (fix: split TextLabel and ImageLabel properly)
+            Tween(overlay, { BackgroundTransparency = 1 }, 0.28)
             for _, c in pairs(overlay:GetDescendants()) do
-                if c:IsA("TextLabel") or c:IsA("ImageLabel") then
-                    Tween(c, { TextTransparency = 1, ImageTransparency = 1 }, 0.28)
-                elseif c:IsA("Frame") and c ~= overlay then
-                    Tween(c, { BackgroundTransparency = 1 }, 0.28)
+                if c:IsA("TextLabel") then
+                    Tween(c, { TextTransparency = 1 }, 0.26)
+                elseif c:IsA("ImageLabel") then
+                    Tween(c, { ImageTransparency = 1 }, 0.26)
+                elseif c:IsA("Frame") then
+                    Tween(c, { BackgroundTransparency = 1 }, 0.26)
                 end
             end
-            task.wait(0.32)
+            task.wait(0.30)
             overlay:Destroy()
 
             -- ── Pop-in the main window ────────

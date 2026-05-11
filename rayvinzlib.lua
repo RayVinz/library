@@ -234,19 +234,41 @@ function RayVinzLib:CreateWindow(cfg)
     })
     Gradient(topLine, accent, T.AccentAlt, 0)
 
-    -- Title
+    -- Icon + Title
+    local iconSize  = cfg.Icon and 22 or 0
+    local iconPad   = cfg.Icon and 8  or 0
+
+    if cfg.Icon then
+        local iconImg = New("ImageLabel", {
+            Image                 = cfg.Icon,
+            BackgroundTransparency = 1,
+            Size                  = UDim2.new(0, iconSize, 0, iconSize),
+            Position              = UDim2.new(0, 10, 0.5, -iconSize/2),
+            ZIndex                = 12,
+            Parent                = topbar
+        })
+        -- glow stroke around icon
+        New("UIStroke", {
+            Color        = accent,
+            Thickness    = 1,
+            Transparency = 0.5,
+            Parent       = iconImg
+        })
+    end
+
+    local titleX = 10 + iconSize + iconPad
     New("TextLabel", {
         Text = title, Font = Enum.Font.GothamBold, TextSize = 13,
         TextColor3 = T.Text, TextXAlignment = Enum.TextXAlignment.Left,
         BackgroundTransparency = 1,
-        Size = UDim2.new(0,100,1,0), Position = UDim2.new(0,14,0,0),
+        Size = UDim2.new(0, 100, 1, 0), Position = UDim2.new(0, titleX, 0, 0),
         ZIndex = 11, Parent = topbar
     })
     New("TextLabel", {
         Text = "/ "..subtitle, Font = Enum.Font.Gotham, TextSize = 10,
         TextColor3 = T.TextDim, TextXAlignment = Enum.TextXAlignment.Left,
         BackgroundTransparency = 1,
-        Size = UDim2.new(0,80,1,0), Position = UDim2.new(0,90,0,0),
+        Size = UDim2.new(0, 80, 1, 0), Position = UDim2.new(0, titleX + 76, 0, 0),
         ZIndex = 11, Parent = topbar
     })
 

@@ -80,8 +80,16 @@ local function guiParent()
 	return LocalPlayer:WaitForChild("PlayerGui")
 end
 
+local function shadow(parent, tr, extra)
+	return new("ImageLabel", { Name = "Shadow", BackgroundTransparency = 1, Image = "rbxassetid://6014261993",
+		ImageColor3 = Color3.new(0, 0, 0), ImageTransparency = tr or 0.4, ScaleType = Enum.ScaleType.Slice,
+		SliceCenter = Rect.new(49, 49, 450, 450), Size = UDim2.new(1, extra or 90, 1, extra or 90),
+		Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = 0 }, parent)
+end
+
 -- ================= icons =================
 local IconPack = nil
+local ActiveGui = nil
 local function resolveIcon(icon)
 	if not icon or icon == "" then return nil end
 	if type(icon) == "number" then return { Image = "rbxassetid://" .. icon } end
@@ -111,20 +119,35 @@ end
 local RayVinzUI = {}
 RayVinzUI.__index = RayVinzUI
 RayVinzUI.Theme = Theme
-function RayVinzUI:SetIcons(p) IconPack = p; return self end
-function RayVinzUI:LoadLucide(url) local ok, p = pcall(function() return loadstring(game:HttpGet(url))() end) if ok and p then IconPack = p return true end return false end
+function RayVinzUI:SetIcons(p)
+	IconPack = p
+	if type(p) == "table" and type(p.SetIconsType) == "function" then pcall(p.SetIconsType, "lucide") end
+	return self
+end
+function RayVinzUI:LoadLucide(url)
+	url = url or "https://raw.githubusercontent.com/Footagesus/Icons/main/Main-v2.lua"
+	local ok, p = pcall(function() return loadstring(game:HttpGet(url))() end)
+	if ok and p then self:SetIcons(p) return true end
+	return false
+end
 
 -- ---------- Window ----------
 function RayVinzUI:CreateWindow(opts)
 	opts = opts or {}
 	local self = setmetatable({}, { __index = RayVinzUI }); self._tabs = {}
 	local gui = new("ScreenGui", { Name = "RayVinzUI", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true }, guiParent())
-	self.Gui = gui
+	self.Gui = gui; ActiveGui = gui
+	local W, H = opts.Width or 660, opts.Height or 460
 
-	local win = new("Frame", { Name = "Window", Size = UDim2.fromOffset(opts.Width or 660, opts.Height or 460),
-		Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = Theme.Background, ClipsDescendants = true }, gui)
+	-- holder (positioned/dragged) -> shadow + rounded window inside
+	local holder = new("Frame", { Name = "Window", Size = UDim2.fromOffset(W, H), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1 }, gui)
+	self.Window = holder
+	shadow(holder, 0.38, 100)
+	local win = new("Frame", { Name = "Main", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Background, ClipsDescendants = true, ZIndex = 1 }, holder)
 	corner(win, 14); stroke(win, Theme.White, 0.9)
-	self.Window = win
+	-- open animation (pop in)
+	holder.Size = UDim2.fromOffset(math.floor(W * 0.94), math.floor(H * 0.94))
+	tween(holder, 0.35, { Size = UDim2.fromOffset(W, H) })
 
 	-- title bar
 	local title = new("Frame", { Name = "TitleBar", Size = UDim2.new(1, 0, 0, 48), BackgroundTransparency = 1 }, win)
@@ -145,7 +168,7 @@ function RayVinzUI:CreateWindow(opts)
 		local pill = new("Frame", { Size = UDim2.fromOffset(0, 20), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = Theme.White, BackgroundTransparency = 0.9, LayoutOrder = 3 }, cluster); corner(pill, 10); pad(pill, 3, 8, 3, 8)
 		local pl = ltext(pill, opts.SubTitle, 10, Theme.SubText, FM); pl.Size = UDim2.fromOffset(0, 14); pl.AutomaticSize = Enum.AutomaticSize.X
 	end
-	draggable(title, win)
+	draggable(title, holder)
 	new("Frame", { Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 0, 48), BackgroundColor3 = Theme.White, BackgroundTransparency = 0.92, BorderSizePixel = 0 }, win)
 
 	-- body: sidebar + content
@@ -210,7 +233,12 @@ end
 -- ================= Section + elements =================
 function RayVinzUI:_section(page, opts)
 	opts = opts or {}; local section = { _gui = self.Gui }
-	if opts.Title then local hd = ltext(page, string.upper(opts.Title), 11, Theme.Muted, FB); hd.Size = UDim2.new(1, 0, 0, 14); hd.LayoutOrder = #page:GetChildren() end
+	if opts.Title then
+		local hrow = new("Frame", { Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1, LayoutOrder = #page:GetChildren() }, page)
+		local off = 0
+		if opts.Icon then iconImage(hrow, opts.Icon, UDim2.fromOffset(13, 13), Theme.Muted, UDim2.new(0, 0, 0.5, 0), Vector2.new(0, 0.5)); off = 18 end
+		local hd = ltext(hrow, string.upper(opts.Title), 11, Theme.Muted, FB); hd.Position = UDim2.new(0, off, 0, 0); hd.Size = UDim2.new(1, -off, 1, 0)
+	end
 	local card = new("Frame", { Name = "Card", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Card, ClipsDescendants = true, LayoutOrder = #page:GetChildren() }, page)
 	corner(card, 12); stroke(card, Theme.White, 0.94); vlist(card, 0)
 	section._card = card
@@ -411,6 +439,33 @@ function RayVinzUI:_section(page, opts)
 		return { Set = function(label, value) if grid[label] then grid[label].Text = tostring(value) end end }
 	end
 
+	-- SystemInfo (live FPS / Ping / Players / Game / Time)
+	function section:SystemInfo(o)
+		o = o or {}; local ic = o.Icons or {}
+		local exec = "Unknown"; pcall(function() if identifyexecutor then exec = (identifyexecutor()) or "Unknown" end end)
+		local g = self:StatGrid({
+			{ Label = "FPS", Value = "--", Icon = ic.FPS }, { Label = "Ping", Value = "--", Icon = ic.Ping },
+			{ Label = "Executor", Value = exec, Icon = ic.Executor }, { Label = "Players", Value = "--", Icon = ic.Players },
+			{ Label = "Game", Value = "--", Icon = ic.Game }, { Label = "Time", Value = "--", Icon = ic.Time },
+		})
+		task.spawn(function()
+			local ok, info = pcall(function() return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId) end)
+			g.Set("Game", (ok and info and info.Name) or "Unknown")
+		end)
+		local RunService = game:GetService("RunService"); local Players = game:GetService("Players")
+		local acc, frames = 0, 0
+		RunService.Heartbeat:Connect(function(dt)
+			frames = frames + 1; acc = acc + dt
+			if acc >= 1 then
+				g.Set("FPS", math.floor(frames / acc + 0.5)); frames = 0; acc = 0
+				local ping = "--"
+				pcall(function() ping = math.floor(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()) .. " ms" end)
+				g.Set("Ping", ping); g.Set("Players", #Players:GetPlayers()); g.Set("Time", os.date("%H:%M:%S"))
+			end
+		end)
+		return g
+	end
+
 	return section
 end
 
@@ -419,8 +474,9 @@ function RayVinzUI:Notify(o)
 	o = o or {}
 	local colors = { Info = Theme.Info, Success = Theme.Green, Warning = Theme.Warning, Error = Theme.Error }
 	local color = colors[o.Type or "Info"] or Theme.Info
-	local holder = self.Gui:FindFirstChild("NotifHolder")
-	if not holder then holder = new("Frame", { Name = "NotifHolder", BackgroundTransparency = 1, Size = UDim2.new(0, 320, 1, -40), Position = UDim2.new(1, -340, 0, 20) }, self.Gui) new("UIListLayout", { FillDirection = Enum.FillDirection.Vertical, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }, holder) end
+	local gui = self.Gui or ActiveGui
+	local holder = gui:FindFirstChild("NotifHolder")
+	if not holder then holder = new("Frame", { Name = "NotifHolder", BackgroundTransparency = 1, Size = UDim2.new(0, 320, 1, -40), Position = UDim2.new(1, -340, 0, 20) }, gui) new("UIListLayout", { FillDirection = Enum.FillDirection.Vertical, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }, holder) end
 	local card = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Card, ClipsDescendants = true, LayoutOrder = tick() }, holder); corner(card, 12); stroke(card, Theme.White, 0.94)
 	new("Frame", { Size = UDim2.new(0, 3, 1, -16), Position = UDim2.new(0, 0, 0, 8), BackgroundColor3 = color, BorderSizePixel = 0 }, card)
 	pad(card, 12, 14, 12, 14); vlist(card, 6)
@@ -439,7 +495,8 @@ end
 
 function RayVinzUI:Dialog(o)
 	o = o or {}
-	local overlay = new("Frame", { Name = "Dialog", Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.5, ZIndex = 80 }, self.Gui)
+	local gui = self.Gui or ActiveGui
+	local overlay = new("Frame", { Name = "Dialog", Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.5, ZIndex = 80 }, gui)
 	local box = new("Frame", { Size = UDim2.fromOffset(360, 0), AutomaticSize = Enum.AutomaticSize.Y, Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = Theme.Elevated, ClipsDescendants = true, ZIndex = 81 }, overlay); corner(box, 16); stroke(box, Theme.White, 0.9); pad(box, 18, 20, 18, 20); vlist(box, 14)
 	local t = ltext(box, o.Title or "Dialog", 15, Theme.Text, FB); t.Size = UDim2.new(1, 0, 0, 20); t.LayoutOrder = 1
 	local body = ltext(box, o.Content or "", 13, Theme.SubText, F); body.LayoutOrder = 2; body.Size = UDim2.new(1, 0, 0, 0); body.AutomaticSize = Enum.AutomaticSize.Y; body.TextWrapped = true; body.TextYAlignment = Enum.TextYAlignment.Top
@@ -455,15 +512,17 @@ end
 
 function RayVinzUI:Loading(o)
 	o = o or {}
-	local overlay = new("Frame", { Name = "Loading", Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Theme.Background, ZIndex = 90 }, self.Gui)
+	local gui = self.Gui or ActiveGui
+	local overlay = new("Frame", { Name = "Loading", Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Theme.Background, ZIndex = 90 }, gui)
 	local box = new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(320, 90), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5) }, overlay); vlist(box, 14)
 	local rowf = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 1 }, box)
 	local lg = new("Frame", { Size = UDim2.fromOffset(38, 38), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0), BackgroundColor3 = Theme.Accent }, rowf); corner(lg, 11); grad(lg, Theme.Accent, Theme.Accent2, 45)
 	iconImage(lg, o.Logo, UDim2.fromOffset(24, 24), Theme.White, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
 	local t1 = ltext(rowf, o.Title or "RayVinz Hub", 15, Theme.Text, FB); t1.Position = UDim2.new(0, 50, 0, 4); t1.Size = UDim2.new(1, -50, 0, 18)
 	local t2 = ltext(rowf, o.SubTitle or "Loading...", 12, Theme.SubText, F); t2.Position = UDim2.new(0, 50, 0, 22); t2.Size = UDim2.new(1, -50, 0, 14)
-	local track = new("Frame", { Size = UDim2.new(1, 0, 0, 6), BackgroundColor3 = Theme.White, BackgroundTransparency = 0.85, BorderSizePixel = 0, LayoutOrder = 2 }, box); corner(track, 3)
-	local fb = new("Frame", { Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Theme.Accent, BorderSizePixel = 0 }, track); corner(fb, 3)
+	local track = new("Frame", { Size = UDim2.new(1, 0, 0, 6), BackgroundColor3 = Theme.White, BackgroundTransparency = 0.85, BorderSizePixel = 0, ClipsDescendants = true, LayoutOrder = 2 }, box); corner(track, 3)
+	local fb = new("Frame", { Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Theme.Accent, BorderSizePixel = 0 }, track); corner(fb, 3); grad(fb, Theme.Accent, Theme.Accent2, 0)
+	tween(fb, 2.2, { Size = UDim2.new(0.92, 0, 1, 0) }) -- auto loading animation
 	return { Set = function(p) tween(fb, 0.3, { Size = UDim2.new(clamp(p, 0, 1), 0, 1, 0) }) end, Close = function() tween(overlay, 0.3, { BackgroundTransparency = 1 }) task.wait(0.35) overlay:Destroy() end }
 end
 

@@ -142,12 +142,31 @@ function RayVinzUI:CreateWindow(opts)
 	-- holder (positioned/dragged) -> shadow + rounded window inside
 	local holder = new("Frame", { Name = "Window", Size = UDim2.fromOffset(W, H), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1 }, gui)
 	self.Window = holder
-	shadow(holder, 0.5, 48)
-	local win = new("Frame", { Name = "Main", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Background, ClipsDescendants = true, ZIndex = 1 }, holder)
+	local sh = shadow(holder, 0.5, 48)
+	-- CanvasGroup lets us fade the whole window (GroupTransparency) in one tween
+	local win = new("CanvasGroup", { Name = "Main", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Background, ClipsDescendants = true, ZIndex = 1 }, holder)
 	corner(win, 14); stroke(win, Theme.White, 0.9)
-	-- open animation (pop in)
-	holder.Size = UDim2.fromOffset(math.floor(W * 0.94), math.floor(H * 0.94))
-	tween(holder, 0.35, { Size = UDim2.fromOffset(W, H) })
+	-- smooth open / close / minimize (scale + fade together, from the window's own center)
+	local function showWin(animate)
+		holder.Visible = true
+		if animate then
+			win.GroupTransparency = 1; sh.ImageTransparency = 1
+			holder.Size = UDim2.fromOffset(math.floor(W * 0.9), math.floor(H * 0.9))
+			tween(holder, 0.34, { Size = UDim2.fromOffset(W, H) })
+			tween(win, 0.34, { GroupTransparency = 0 })
+			tween(sh, 0.34, { ImageTransparency = 0.5 })
+		else
+			win.GroupTransparency = 0; sh.ImageTransparency = 0.5; holder.Size = UDim2.fromOffset(W, H)
+		end
+	end
+	local function hideWin()
+		tween(holder, 0.24, { Size = UDim2.fromOffset(math.floor(W * 0.9), math.floor(H * 0.9)) })
+		tween(win, 0.24, { GroupTransparency = 1 })
+		tween(sh, 0.24, { ImageTransparency = 1 })
+		task.delay(0.26, function() holder.Visible = false end)
+	end
+	self._show, self._hide = showWin, hideWin
+	showWin(true)
 
 	-- title bar
 	local title = new("Frame", { Name = "TitleBar", Size = UDim2.new(1, 0, 0, 48), BackgroundTransparency = 1 }, win)
@@ -155,8 +174,8 @@ function RayVinzUI:CreateWindow(opts)
 	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8), VerticalAlignment = Enum.VerticalAlignment.Center }, lights)
 	for i, c in ipairs({ Color3.fromRGB(255, 95, 87), Color3.fromRGB(254, 188, 46), Color3.fromRGB(40, 200, 64) }) do
 		local d = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(12, 12), BackgroundColor3 = c, LayoutOrder = i }, lights); corner(d, 6)
-		if i == 1 then d.MouseButton1Click:Connect(function() gui:Destroy() end) end
-		if i == 2 then d.MouseButton1Click:Connect(function() win.Visible = false end) end
+		if i == 1 then d.MouseButton1Click:Connect(function() hideWin() end) end
+		if i == 2 then d.MouseButton1Click:Connect(function() hideWin() end) end
 	end
 	-- centered logo + title + version pill
 	local cluster = new("Frame", { Size = UDim2.fromOffset(0, 24), AutomaticSize = Enum.AutomaticSize.X, Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1 }, title)
@@ -192,7 +211,9 @@ function RayVinzUI:_mountMobile(logo)
 		Size = UDim2.fromScale(1.9, 1.9), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = 0 }, btn)
 	local lg = new("Frame", { Size = UDim2.fromOffset(34, 34), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = Theme.Accent }, btn); corner(lg, 10); grad(lg, Theme.Accent, Theme.Accent2, 45)
 	iconImage(lg, logo, UDim2.fromOffset(22, 22), Theme.White, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
-	btn.MouseButton1Click:Connect(function() self.Window.Visible = not self.Window.Visible end)
+	btn.MouseButton1Click:Connect(function()
+		if self.Window.Visible then self._hide() else self._show(true) end
+	end)
 	self.MobileButton = btn
 end
 

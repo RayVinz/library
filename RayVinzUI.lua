@@ -142,7 +142,7 @@ function RayVinzUI:CreateWindow(opts)
 	-- holder (positioned/dragged) -> shadow + rounded window inside
 	local holder = new("Frame", { Name = "Window", Size = UDim2.fromOffset(W, H), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1 }, gui)
 	self.Window = holder
-	shadow(holder, 0.38, 100)
+	shadow(holder, 0.5, 48)
 	local win = new("Frame", { Name = "Main", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Background, ClipsDescendants = true, ZIndex = 1 }, holder)
 	corner(win, 14); stroke(win, Theme.White, 0.9)
 	-- open animation (pop in)

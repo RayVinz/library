@@ -477,15 +477,21 @@ function RayVinzUI:Notify(o)
 	local gui = self.Gui or ActiveGui
 	local holder = gui:FindFirstChild("NotifHolder")
 	if not holder then holder = new("Frame", { Name = "NotifHolder", BackgroundTransparency = 1, Size = UDim2.new(0, 320, 1, -40), Position = UDim2.new(1, -340, 0, 20) }, gui) new("UIListLayout", { FillDirection = Enum.FillDirection.Vertical, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }, holder) end
-	local card = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Card, ClipsDescendants = true, LayoutOrder = tick() }, holder); corner(card, 12); stroke(card, Theme.White, 0.94)
-	new("Frame", { Size = UDim2.new(0, 3, 1, -16), Position = UDim2.new(0, 0, 0, 8), BackgroundColor3 = color, BorderSizePixel = 0 }, card)
-	pad(card, 12, 14, 12, 14); vlist(card, 6)
-	local top = new("Frame", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, LayoutOrder = 1 }, card)
+	local card = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Card, ClipsDescendants = true, LayoutOrder = math.floor(tick() % 1e7) }, holder); corner(card, 12); stroke(card, Theme.White, 0.94)
+	-- root is a horizontal layout: [accent bar] [content column]. The bar uses scale-Y
+	-- only inside a fixed-X row, so it never feeds back into the card's AutomaticSize.Y.
+	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Top }, card)
+	new("Frame", { Size = UDim2.new(0, 3, 1, 0), BackgroundColor3 = color, BorderSizePixel = 0, LayoutOrder = 1 }, card)
+	local col = new("Frame", { Size = UDim2.new(1, -3, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, LayoutOrder = 2 }, card)
+	pad(col, 12, 14, 12, 14); vlist(col, 6)
+	local top = new("Frame", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, LayoutOrder = 1 }, col)
 	local off = 0
 	if o.Icon then iconImage(top, o.Icon, UDim2.fromOffset(16, 16), color, UDim2.new(0, 0, 0.5, 0), Vector2.new(0, 0.5)) off = 24 end
 	local tl = ltext(top, o.Title or "Notification", 13, color, FB); tl.Position = UDim2.new(0, off, 0, 0); tl.Size = UDim2.new(1, -off, 1, 0)
-	local msg = ltext(card, o.Content or "", 11, Theme.SubText, F); msg.LayoutOrder = 2; msg.Size = UDim2.new(1, 0, 0, 0); msg.AutomaticSize = Enum.AutomaticSize.Y; msg.TextWrapped = true; msg.TextYAlignment = Enum.TextYAlignment.Top
-	local track = new("Frame", { Size = UDim2.new(1, 0, 0, 3), BackgroundColor3 = Theme.White, BackgroundTransparency = 0.88, BorderSizePixel = 0, LayoutOrder = 3 }, card); corner(track, 2)
+	if o.Content and o.Content ~= "" then
+		local msg = ltext(col, o.Content, 11, Theme.SubText, F); msg.LayoutOrder = 2; msg.Size = UDim2.new(1, 0, 0, 0); msg.AutomaticSize = Enum.AutomaticSize.Y; msg.TextWrapped = true; msg.TextYAlignment = Enum.TextYAlignment.Top
+	end
+	local track = new("Frame", { Size = UDim2.new(1, 0, 0, 3), BackgroundColor3 = Theme.White, BackgroundTransparency = 0.88, BorderSizePixel = 0, LayoutOrder = 3 }, col); corner(track, 2)
 	local fb = new("Frame", { Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = color, BorderSizePixel = 0 }, track); corner(fb, 2)
 	local dur = o.Duration or 4
 	tween(fb, dur, { Size = UDim2.new(0, 0, 1, 0) })

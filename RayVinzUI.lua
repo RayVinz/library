@@ -122,7 +122,7 @@ function RayVinzUI:CreateWindow(opts)
 	self.Gui = gui
 
 	local win = new("Frame", { Name = "Window", Size = UDim2.fromOffset(opts.Width or 660, opts.Height or 460),
-		Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = Theme.Background, ClipsContent = true }, gui)
+		Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = Theme.Background, ClipsDescendants = true }, gui)
 	corner(win, 14); stroke(win, Theme.White, 0.9)
 	self.Window = win
 
@@ -211,7 +211,7 @@ end
 function RayVinzUI:_section(page, opts)
 	opts = opts or {}; local section = { _gui = self.Gui }
 	if opts.Title then local hd = ltext(page, string.upper(opts.Title), 11, Theme.Muted, FB); hd.Size = UDim2.new(1, 0, 0, 14); hd.LayoutOrder = #page:GetChildren() end
-	local card = new("Frame", { Name = "Card", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Card, ClipsContent = true, LayoutOrder = #page:GetChildren() }, page)
+	local card = new("Frame", { Name = "Card", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Card, ClipsDescendants = true, LayoutOrder = #page:GetChildren() }, page)
 	corner(card, 12); stroke(card, Theme.White, 0.94); vlist(card, 0)
 	section._card = card
 
@@ -293,7 +293,7 @@ function RayVinzUI:_section(page, opts)
 		local box = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(150, 30), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), BackgroundColor3 = Theme.Field }, r); corner(box, 8)
 		local valTxt = ltext(box, "Select...", 12, Theme.Text, FM); valTxt.Position = UDim2.new(0, 10, 0, 0); valTxt.Size = UDim2.new(1, -28, 1, 0)
 		iconImage(box, "chevron-down", UDim2.fromOffset(12, 12), Theme.SubText, UDim2.new(1, -8, 0.5, 0), Vector2.new(1, 0.5))
-		local list = new("Frame", { Visible = false, BackgroundColor3 = Theme.Elevated, Size = UDim2.fromOffset(160, 0), AutomaticSize = Enum.AutomaticSize.Y, ClipsContent = true, ZIndex = 50 }, self._gui); corner(list, 10); stroke(list, Theme.White, 0.88); pad(list, 6, 6, 6, 6); vlist(list, 2)
+		local list = new("Frame", { Visible = false, BackgroundColor3 = Theme.Elevated, Size = UDim2.fromOffset(160, 0), AutomaticSize = Enum.AutomaticSize.Y, ClipsDescendants = true, ZIndex = 50 }, self._gui); corner(list, 10); stroke(list, Theme.White, 0.88); pad(list, 6, 6, 6, 6); vlist(list, 2)
 		local function display() if multi then valTxt.Text = #selected > 0 and table.concat(selected, ", ") or "None" else valTxt.Text = selected and tostring(selected) or "Select..." end end
 		local function rebuild()
 			for _, c in ipairs(list:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
@@ -421,7 +421,7 @@ function RayVinzUI:Notify(o)
 	local color = colors[o.Type or "Info"] or Theme.Info
 	local holder = self.Gui:FindFirstChild("NotifHolder")
 	if not holder then holder = new("Frame", { Name = "NotifHolder", BackgroundTransparency = 1, Size = UDim2.new(0, 320, 1, -40), Position = UDim2.new(1, -340, 0, 20) }, self.Gui) new("UIListLayout", { FillDirection = Enum.FillDirection.Vertical, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }, holder) end
-	local card = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Card, ClipsContent = true, LayoutOrder = tick() }, holder); corner(card, 12); stroke(card, Theme.White, 0.94)
+	local card = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Card, ClipsDescendants = true, LayoutOrder = tick() }, holder); corner(card, 12); stroke(card, Theme.White, 0.94)
 	new("Frame", { Size = UDim2.new(0, 3, 1, -16), Position = UDim2.new(0, 0, 0, 8), BackgroundColor3 = color, BorderSizePixel = 0 }, card)
 	pad(card, 12, 14, 12, 14); vlist(card, 6)
 	local top = new("Frame", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, LayoutOrder = 1 }, card)
@@ -440,7 +440,7 @@ end
 function RayVinzUI:Dialog(o)
 	o = o or {}
 	local overlay = new("Frame", { Name = "Dialog", Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.5, ZIndex = 80 }, self.Gui)
-	local box = new("Frame", { Size = UDim2.fromOffset(360, 0), AutomaticSize = Enum.AutomaticSize.Y, Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = Theme.Elevated, ClipsContent = true, ZIndex = 81 }, overlay); corner(box, 16); stroke(box, Theme.White, 0.9); pad(box, 18, 20, 18, 20); vlist(box, 14)
+	local box = new("Frame", { Size = UDim2.fromOffset(360, 0), AutomaticSize = Enum.AutomaticSize.Y, Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = Theme.Elevated, ClipsDescendants = true, ZIndex = 81 }, overlay); corner(box, 16); stroke(box, Theme.White, 0.9); pad(box, 18, 20, 18, 20); vlist(box, 14)
 	local t = ltext(box, o.Title or "Dialog", 15, Theme.Text, FB); t.Size = UDim2.new(1, 0, 0, 20); t.LayoutOrder = 1
 	local body = ltext(box, o.Content or "", 13, Theme.SubText, F); body.LayoutOrder = 2; body.Size = UDim2.new(1, 0, 0, 0); body.AutomaticSize = Enum.AutomaticSize.Y; body.TextWrapped = true; body.TextYAlignment = Enum.TextYAlignment.Top
 	local btns = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 36), LayoutOrder = 3 }, box)

@@ -180,15 +180,15 @@ function RayVinzUI:CreateWindow(opts)
 	end
 	-- left-aligned brand: logo + (map name + faint "By author") + version/tags row
 	local brand = new("Frame", { Size = UDim2.new(1, -92, 1, 0), Position = UDim2.new(0, 80, 0, 0), BackgroundTransparency = 1 }, title)
-	local blogo = new("Frame", { Size = UDim2.fromOffset(30, 30), Position = UDim2.new(0, 0, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = Theme.Accent }, brand); corner(blogo, 8); grad(blogo, Theme.Accent, Theme.Accent2, 45)
-	iconImage(blogo, opts.Logo, UDim2.fromOffset(20, 20), Theme.White, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
+	local blogo = new("Frame", { Size = UDim2.fromOffset(38, 38), Position = UDim2.new(0, 0, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundTransparency = 1 }, brand)
+	iconImage(blogo, opts.Logo, UDim2.fromOffset(38, 38), Theme.White, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
 	-- row 1: map name + "By author" (faint, thin, small)
-	local r1 = new("Frame", { Size = UDim2.new(1, -40, 0, 16), Position = UDim2.new(0, 40, 0, 7), BackgroundTransparency = 1 }, brand)
+	local r1 = new("Frame", { Size = UDim2.new(1, -48, 0, 16), Position = UDim2.new(0, 48, 0, 7), BackgroundTransparency = 1 }, brand)
 	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 7), VerticalAlignment = Enum.VerticalAlignment.Bottom }, r1)
 	local tt = ltext(r1, opts.Title or "RayVinz Hub", 14, Theme.Text, FB); tt.Size = UDim2.fromOffset(0, 16); tt.AutomaticSize = Enum.AutomaticSize.X; tt.LayoutOrder = 1
 	if opts.Author then local au = ltext(r1, "By " .. opts.Author, 10, Theme.Muted, F); au.Size = UDim2.fromOffset(0, 13); au.AutomaticSize = Enum.AutomaticSize.X; au.LayoutOrder = 2 end
 	-- row 2: version tag (+ extra tags)
-	local r2 = new("Frame", { Size = UDim2.new(1, -40, 0, 15), Position = UDim2.new(0, 40, 0, 25), BackgroundTransparency = 1 }, brand)
+	local r2 = new("Frame", { Size = UDim2.new(1, -48, 0, 15), Position = UDim2.new(0, 48, 0, 25), BackgroundTransparency = 1 }, brand)
 	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 5), VerticalAlignment = Enum.VerticalAlignment.Center }, r2)
 	local function titleTag(txt, col, i)
 		local pill = new("Frame", { Size = UDim2.fromOffset(0, 15), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = col or Theme.White, BackgroundTransparency = 0.8, LayoutOrder = i }, r2); corner(pill, 7); pad(pill, 1, 7, 1, 7)
@@ -439,6 +439,22 @@ function RayVinzUI:_section(page, opts)
 		local l = ltext(r, text, 13, Theme.SubText, F); l.Position = UDim2.new(0, 14, 0, 0); l.Size = UDim2.new(1, -28, 0, 0); l.AutomaticSize = Enum.AutomaticSize.Y; l.TextWrapped = true; l.TextYAlignment = Enum.TextYAlignment.Top
 		pad(r, 11, 0, 11, 0)
 		return r
+	end
+
+	-- UserInfo (profile card): avatar + name + tag, auto-filled from the player on join
+	function section:UserInfo(o)
+		o = o or {}
+		local name = o.Name or (LocalPlayer and (LocalPlayer.DisplayName or LocalPlayer.Name)) or "Player"
+		local sub  = o.Tag or (LocalPlayer and ("@" .. LocalPlayer.Name)) or ""
+		local r = row(60)
+		local av = new("ImageLabel", { Size = UDim2.fromOffset(42, 42), Position = UDim2.new(0, 14, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = Theme.Field, ScaleType = Enum.ScaleType.Crop }, r); corner(av, 21); stroke(av, Theme.Accent, 0.4, 1)
+		-- avatar: custom image/asset, or the player's headshot
+		local ic = o.Avatar and resolveIcon(o.Avatar)
+		if ic then av.Image = ic.Image
+		elseif LocalPlayer then av.Image = "rbxthumb://type=AvatarHeadShot&id=" .. tostring(LocalPlayer.UserId) .. "&w=150&h=150" end
+		local tl = ltext(r, name, 14, Theme.Text, FB); tl.Position = UDim2.new(0, 66, 0, 11); tl.Size = UDim2.new(1, -80, 0, 18)
+		local sl = ltext(r, sub, 11, o.TagColor or Theme.Accent, FM); sl.Position = UDim2.new(0, 66, 0, 31); sl.Size = UDim2.new(1, -80, 0, 14)
+		return { Set = function(n, t) if n then tl.Text = n end if t then sl.Text = t end end }
 	end
 
 	-- Paragraph

@@ -134,6 +134,7 @@ end
 -- ---------- Window ----------
 function RayVinzUI:CreateWindow(opts)
 	opts = opts or {}
+	opts.Logo = opts.Logo or "sparkles" -- default hub icon (needs UI:LoadLucide())
 	local self = setmetatable({}, { __index = RayVinzUI }); self._tabs = {}
 	local gui = new("ScreenGui", { Name = "RayVinzUI", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true }, guiParent())
 	self.Gui = gui; ActiveGui = gui
@@ -144,7 +145,7 @@ function RayVinzUI:CreateWindow(opts)
 	self.Window = holder
 	local sh = shadow(holder, 0.5, 48)
 	-- CanvasGroup lets us fade the whole window (GroupTransparency) in one tween
-	local win = new("CanvasGroup", { Name = "Main", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Background, ClipsDescendants = true, ZIndex = 1 }, holder)
+	local win = new("CanvasGroup", { Name = "Main", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Background, BackgroundTransparency = 0.06, ClipsDescendants = true, ZIndex = 1 }, holder)
 	corner(win, 14); stroke(win, Theme.White, 0.9)
 	-- smooth open / close / minimize (scale + fade together, from the window's own center)
 	local function showWin(animate)
@@ -497,26 +498,32 @@ function RayVinzUI:Notify(o)
 	local color = colors[o.Type or "Info"] or Theme.Info
 	local gui = self.Gui or ActiveGui
 	local holder = gui:FindFirstChild("NotifHolder")
-	if not holder then holder = new("Frame", { Name = "NotifHolder", BackgroundTransparency = 1, Size = UDim2.new(0, 320, 1, -40), Position = UDim2.new(1, -340, 0, 20) }, gui) new("UIListLayout", { FillDirection = Enum.FillDirection.Vertical, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }, holder) end
-	local card = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Card, ClipsDescendants = true, LayoutOrder = math.floor(tick() % 1e7) }, holder); corner(card, 12); stroke(card, Theme.White, 0.94)
-	-- root is a horizontal layout: [accent bar] [content column]. The bar uses scale-Y
-	-- only inside a fixed-X row, so it never feeds back into the card's AutomaticSize.Y.
+	if not holder then holder = new("Frame", { Name = "NotifHolder", BackgroundTransparency = 1, Size = UDim2.new(0, 300, 1, -40), Position = UDim2.new(1, -320, 0, 20) }, gui) new("UIListLayout", { FillDirection = Enum.FillDirection.Vertical, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Right }, holder) end
+	-- The card height is DRIVEN from the content's measured height. Mixing AutomaticSize.Y
+	-- with a scale-Y child (the accent bar) made the card balloon to full screen — so the
+	-- card is a fixed size that we update from col.AbsoluteSize, and only col auto-sizes.
+	local card = new("CanvasGroup", { Size = UDim2.new(1, 0, 0, 48), BackgroundColor3 = Color3.fromRGB(16, 16, 18), BackgroundTransparency = 0.04, GroupTransparency = 1, ClipsDescendants = true, LayoutOrder = math.floor(tick() % 1e7) }, holder)
+	corner(card, 12); stroke(card, color, 0.55, 1)
 	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Top }, card)
 	new("Frame", { Size = UDim2.new(0, 3, 1, 0), BackgroundColor3 = color, BorderSizePixel = 0, LayoutOrder = 1 }, card)
 	local col = new("Frame", { Size = UDim2.new(1, -3, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, LayoutOrder = 2 }, card)
-	pad(col, 12, 14, 12, 14); vlist(col, 6)
-	local top = new("Frame", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, LayoutOrder = 1 }, col)
+	pad(col, 11, 14, 12, 13); vlist(col, 5)
+	local top = new("Frame", { Size = UDim2.new(1, 0, 0, 18), BackgroundTransparency = 1, LayoutOrder = 1 }, col)
 	local off = 0
-	if o.Icon then iconImage(top, o.Icon, UDim2.fromOffset(16, 16), color, UDim2.new(0, 0, 0.5, 0), Vector2.new(0, 0.5)) off = 24 end
+	if o.Icon then iconImage(top, o.Icon, UDim2.fromOffset(15, 15), color, UDim2.new(0, 0, 0.5, 0), Vector2.new(0, 0.5)) off = 22 end
 	local tl = ltext(top, o.Title or "Notification", 13, color, FB); tl.Position = UDim2.new(0, off, 0, 0); tl.Size = UDim2.new(1, -off, 1, 0)
 	if o.Content and o.Content ~= "" then
 		local msg = ltext(col, o.Content, 11, Theme.SubText, F); msg.LayoutOrder = 2; msg.Size = UDim2.new(1, 0, 0, 0); msg.AutomaticSize = Enum.AutomaticSize.Y; msg.TextWrapped = true; msg.TextYAlignment = Enum.TextYAlignment.Top
 	end
-	local track = new("Frame", { Size = UDim2.new(1, 0, 0, 3), BackgroundColor3 = Theme.White, BackgroundTransparency = 0.88, BorderSizePixel = 0, LayoutOrder = 3 }, col); corner(track, 2)
+	local track = new("Frame", { Size = UDim2.new(1, 0, 0, 3), BackgroundColor3 = Theme.White, BackgroundTransparency = 0.9, BorderSizePixel = 0, LayoutOrder = 3 }, col); corner(track, 2)
 	local fb = new("Frame", { Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = color, BorderSizePixel = 0 }, track); corner(fb, 2)
+	-- keep card height glued to the measured content (never AutomaticSize on the card itself)
+	local function sync() local h = col.AbsoluteSize.Y if h and h > 0 then card.Size = UDim2.new(1, 0, 0, h) end end
+	col:GetPropertyChangedSignal("AbsoluteSize"):Connect(sync); task.defer(sync)
+	tween(card, 0.28, { GroupTransparency = 0 }) -- fade in
 	local dur = o.Duration or 4
 	tween(fb, dur, { Size = UDim2.new(0, 0, 1, 0) })
-	task.delay(dur, function() tween(card, 0.25, { BackgroundTransparency = 1 }) task.wait(0.3) card:Destroy() end)
+	task.delay(dur, function() tween(card, 0.25, { GroupTransparency = 1 }) task.wait(0.3) card:Destroy() end)
 	return card
 end
 

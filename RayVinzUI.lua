@@ -576,24 +576,22 @@ end
 function RayVinzUI:Loading(o)
 	o = o or {}
 	local gui = self.Gui or ActiveGui
-	local overlay = new("Frame", { Name = "Loading", Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Theme.Background, BackgroundTransparency = 1, ZIndex = 90 }, gui)
-	tween(overlay, 0.25, { BackgroundTransparency = 0 }) -- fade the splash in
-	local box = new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(240, 0), AutomaticSize = Enum.AutomaticSize.Y, Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = 91 }, overlay)
-	new("UIListLayout", { FillDirection = Enum.FillDirection.Vertical, Padding = UDim.new(0, 16), HorizontalAlignment = Enum.HorizontalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder }, box)
-	-- big logo with soft glow + pulse animation
-	local lgWrap = new("Frame", { Size = UDim2.fromOffset(72, 72), BackgroundTransparency = 1, LayoutOrder = 1, ZIndex = 91 }, box)
-	new("ImageLabel", { BackgroundTransparency = 1, Image = "rbxassetid://5028857084", ImageColor3 = Theme.Accent, ImageTransparency = 0.45, Size = UDim2.fromScale(2.1, 2.1), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = 91 }, lgWrap)
-	local lg = new("Frame", { Size = UDim2.fromScale(1, 1), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = Theme.Accent, ZIndex = 92 }, lgWrap); corner(lg, 18); grad(lg, Theme.Accent, Theme.Accent2, 45)
-	iconImage(lg, o.Logo, UDim2.fromOffset(40, 40), Theme.White, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
-	TweenService:Create(lgWrap, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Size = UDim2.fromOffset(82, 82) }):Play()
-	-- title + subtitle (centered)
-	local t1 = ltext(box, o.Title or "RayVinz Hub", 16, Theme.Text, FB, Enum.TextXAlignment.Center); t1.Size = UDim2.new(1, 0, 0, 20); t1.LayoutOrder = 2; t1.ZIndex = 91
-	local t2 = ltext(box, o.SubTitle or "Loading...", 12, Theme.SubText, F, Enum.TextXAlignment.Center); t2.Size = UDim2.new(1, 0, 0, 15); t2.LayoutOrder = 3; t2.ZIndex = 91
-	-- progress bar
-	local track = new("Frame", { Size = UDim2.fromOffset(170, 5), BackgroundColor3 = Theme.White, BackgroundTransparency = 0.85, BorderSizePixel = 0, ClipsDescendants = true, LayoutOrder = 4, ZIndex = 91 }, box); corner(track, 3)
-	local fb = new("Frame", { Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Theme.Accent, BorderSizePixel = 0, ZIndex = 91 }, track); corner(fb, 3); grad(fb, Theme.Accent, Theme.Accent2, 0)
+	-- dim backdrop + small compact card (Figma style): progress bar on top, logo + text in a row
+	local overlay = new("Frame", { Name = "Loading", Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, ZIndex = 90 }, gui)
+	tween(overlay, 0.25, { BackgroundTransparency = 0.45 })
+	local card = new("CanvasGroup", { Size = UDim2.fromOffset(290, 72), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = Color3.fromRGB(22, 22, 24), BackgroundTransparency = 0.02, GroupTransparency = 1, ClipsDescendants = true, ZIndex = 91 }, overlay); corner(card, 14); stroke(card, Theme.White, 0.9, 1)
+	tween(card, 0.3, { GroupTransparency = 0 })
+	-- progress bar along the very top edge
+	local track = new("Frame", { Size = UDim2.new(1, 0, 0, 3), Position = UDim2.new(0, 0, 0, 0), BackgroundColor3 = Theme.White, BackgroundTransparency = 0.9, BorderSizePixel = 0 }, card)
+	local fb = new("Frame", { Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Theme.Accent, BorderSizePixel = 0 }, track); grad(fb, Theme.Accent, Theme.Accent2, 0)
 	tween(fb, 2.2, { Size = UDim2.new(0.92, 0, 1, 0) }) -- auto loading animation
-	return { Set = function(p) tween(fb, 0.3, { Size = UDim2.new(clamp(p, 0, 1), 0, 1, 0) }) end, Close = function() tween(overlay, 0.3, { BackgroundTransparency = 1 }) task.wait(0.35) overlay:Destroy() end }
+	-- logo (small gradient square)
+	local lg = new("Frame", { Size = UDim2.fromOffset(40, 40), Position = UDim2.new(0, 14, 0.5, 2), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = Theme.Accent }, card); corner(lg, 11); grad(lg, Theme.Accent, Theme.Accent2, 45)
+	iconImage(lg, o.Logo, UDim2.fromOffset(24, 24), Theme.White, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
+	-- title + subtitle (left of logo)
+	local t1 = ltext(card, o.Title or "RayVinz Hub", 14, Theme.Text, FB); t1.Position = UDim2.new(0, 66, 0, 17); t1.Size = UDim2.new(1, -80, 0, 18)
+	local t2 = ltext(card, o.SubTitle or "Loading...", 11, Theme.SubText, F); t2.Position = UDim2.new(0, 66, 0, 38); t2.Size = UDim2.new(1, -80, 0, 14)
+	return { Set = function(p) tween(fb, 0.3, { Size = UDim2.new(clamp(p, 0, 1), 0, 1, 0) }) end, Close = function() tween(card, 0.25, { GroupTransparency = 1 }) tween(overlay, 0.3, { BackgroundTransparency = 1 }) task.wait(0.32) overlay:Destroy() end }
 end
 
 return setmetatable({}, { __index = RayVinzUI })

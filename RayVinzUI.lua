@@ -135,17 +135,18 @@ end
 function RayVinzUI:CreateWindow(opts)
 	opts = opts or {}
 	opts.Logo = opts.Logo or "sparkles" -- default hub icon (needs UI:LoadLucide())
+	opts.Version = opts.Version or opts.SubTitle or "v1.0.0"
 	local self = setmetatable({}, { __index = RayVinzUI }); self._tabs = {}
 	local gui = new("ScreenGui", { Name = "RayVinzUI", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true }, guiParent())
 	self.Gui = gui; ActiveGui = gui
 	local W, H = opts.Width or 660, opts.Height or 460
 
 	-- holder (positioned/dragged) -> shadow + rounded window inside
-	local holder = new("Frame", { Name = "Window", Size = UDim2.fromOffset(W, H), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1 }, gui)
+	local holder = new("Frame", { Name = "Window", Visible = false, Size = UDim2.fromOffset(W, H), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1 }, gui)
 	self.Window = holder
-	local sh = shadow(holder, 0.5, 48)
+	local sh = shadow(holder, 1, 48)
 	-- CanvasGroup lets us fade the whole window (GroupTransparency) in one tween
-	local win = new("CanvasGroup", { Name = "Main", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Background, BackgroundTransparency = 0.06, ClipsDescendants = true, ZIndex = 1 }, holder)
+	local win = new("CanvasGroup", { Name = "Main", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Background, BackgroundTransparency = 0.06, GroupTransparency = 1, ClipsDescendants = true, ZIndex = 1 }, holder)
 	corner(win, 14); stroke(win, Theme.White, 0.9)
 	-- smooth open / close / minimize (scale + fade together, from the window's own center)
 	local function showWin(animate)
@@ -167,7 +168,6 @@ function RayVinzUI:CreateWindow(opts)
 		task.delay(0.26, function() holder.Visible = false end)
 	end
 	self._show, self._hide = showWin, hideWin
-	showWin(true)
 
 	-- title bar
 	local title = new("Frame", { Name = "TitleBar", Size = UDim2.new(1, 0, 0, 48), BackgroundTransparency = 1 }, win)
@@ -178,16 +178,24 @@ function RayVinzUI:CreateWindow(opts)
 		if i == 1 then d.MouseButton1Click:Connect(function() hideWin() end) end
 		if i == 2 then d.MouseButton1Click:Connect(function() hideWin() end) end
 	end
-	-- centered logo + title + version pill
-	local cluster = new("Frame", { Size = UDim2.fromOffset(0, 24), AutomaticSize = Enum.AutomaticSize.X, Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1 }, title)
-	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 9), VerticalAlignment = Enum.VerticalAlignment.Center }, cluster)
-	local logo = new("Frame", { Size = UDim2.fromOffset(22, 22), BackgroundColor3 = Theme.Accent, LayoutOrder = 1 }, cluster); corner(logo, 6); grad(logo, Theme.Accent, Theme.Accent2, 45)
-	iconImage(logo, opts.Logo, UDim2.fromOffset(14, 14), Theme.White, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
-	local tt = ltext(cluster, opts.Title or "RayVinz Hub", 14, Theme.Text, FB); tt.Size = UDim2.fromOffset(0, 22); tt.AutomaticSize = Enum.AutomaticSize.X; tt.LayoutOrder = 2
-	if opts.SubTitle then
-		local pill = new("Frame", { Size = UDim2.fromOffset(0, 20), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = Theme.White, BackgroundTransparency = 0.9, LayoutOrder = 3 }, cluster); corner(pill, 10); pad(pill, 3, 8, 3, 8)
-		local pl = ltext(pill, opts.SubTitle, 10, Theme.SubText, FM); pl.Size = UDim2.fromOffset(0, 14); pl.AutomaticSize = Enum.AutomaticSize.X
+	-- left-aligned brand: logo + (map name + faint "By author") + version/tags row
+	local brand = new("Frame", { Size = UDim2.new(1, -92, 1, 0), Position = UDim2.new(0, 80, 0, 0), BackgroundTransparency = 1 }, title)
+	local blogo = new("Frame", { Size = UDim2.fromOffset(30, 30), Position = UDim2.new(0, 0, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = Theme.Accent }, brand); corner(blogo, 8); grad(blogo, Theme.Accent, Theme.Accent2, 45)
+	iconImage(blogo, opts.Logo, UDim2.fromOffset(20, 20), Theme.White, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
+	-- row 1: map name + "By author" (faint, thin, small)
+	local r1 = new("Frame", { Size = UDim2.new(1, -40, 0, 16), Position = UDim2.new(0, 40, 0, 7), BackgroundTransparency = 1 }, brand)
+	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 7), VerticalAlignment = Enum.VerticalAlignment.Bottom }, r1)
+	local tt = ltext(r1, opts.Title or "RayVinz Hub", 14, Theme.Text, FB); tt.Size = UDim2.fromOffset(0, 16); tt.AutomaticSize = Enum.AutomaticSize.X; tt.LayoutOrder = 1
+	if opts.Author then local au = ltext(r1, "By " .. opts.Author, 10, Theme.Muted, F); au.Size = UDim2.fromOffset(0, 13); au.AutomaticSize = Enum.AutomaticSize.X; au.LayoutOrder = 2 end
+	-- row 2: version tag (+ extra tags)
+	local r2 = new("Frame", { Size = UDim2.new(1, -40, 0, 15), Position = UDim2.new(0, 40, 0, 25), BackgroundTransparency = 1 }, brand)
+	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 5), VerticalAlignment = Enum.VerticalAlignment.Center }, r2)
+	local function titleTag(txt, col, i)
+		local pill = new("Frame", { Size = UDim2.fromOffset(0, 15), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = col or Theme.White, BackgroundTransparency = 0.8, LayoutOrder = i }, r2); corner(pill, 7); pad(pill, 1, 7, 1, 7)
+		local pl = ltext(pill, txt, 10, col or Theme.SubText, FM); pl.Size = UDim2.fromOffset(0, 13); pl.AutomaticSize = Enum.AutomaticSize.X
 	end
+	titleTag(opts.Version or opts.SubTitle or "v1.0.0", Theme.Accent, 1)
+	if opts.Tags then for i, tg in ipairs(opts.Tags) do titleTag(tg.Text or tostring(tg), tg.Color, i + 1) end end
 	draggable(title, holder)
 	new("Frame", { Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 0, 48), BackgroundColor3 = Theme.White, BackgroundTransparency = 0.92, BorderSizePixel = 0 }, win)
 
@@ -200,6 +208,15 @@ function RayVinzUI:CreateWindow(opts)
 	self.Content = content
 
 	self:_mountMobile(opts.Logo)
+
+	-- intro: play a loading screen, then reveal the window (opts.Loading = true or { Title, SubTitle, Duration })
+	if opts.Loading then
+		local lo = type(opts.Loading) == "table" and opts.Loading or {}
+		local loader = self:Loading({ Title = lo.Title or opts.Title or "RayVinz Hub", SubTitle = lo.SubTitle or "Loading assets...", Logo = opts.Logo })
+		task.delay(lo.Duration or 2, function() loader.Close() task.wait(0.25) showWin(true) end)
+	else
+		showWin(true)
+	end
 	return self
 end
 
@@ -496,33 +513,29 @@ function RayVinzUI:Notify(o)
 	o = o or {}
 	local colors = { Info = Theme.Info, Success = Theme.Green, Warning = Theme.Warning, Error = Theme.Error }
 	local color = colors[o.Type or "Info"] or Theme.Info
+	local defIcons = { Info = "info", Success = "circle-check", Warning = "triangle-alert", Error = "circle-x" }
 	local gui = self.Gui or ActiveGui
 	local holder = gui:FindFirstChild("NotifHolder")
-	if not holder then holder = new("Frame", { Name = "NotifHolder", BackgroundTransparency = 1, Size = UDim2.new(0, 300, 1, -40), Position = UDim2.new(1, -320, 0, 20) }, gui) new("UIListLayout", { FillDirection = Enum.FillDirection.Vertical, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Right }, holder) end
-	-- The card height is DRIVEN from the content's measured height. Mixing AutomaticSize.Y
-	-- with a scale-Y child (the accent bar) made the card balloon to full screen — so the
-	-- card is a fixed size that we update from col.AbsoluteSize, and only col auto-sizes.
-	local card = new("CanvasGroup", { Size = UDim2.new(1, 0, 0, 48), BackgroundColor3 = Color3.fromRGB(16, 16, 18), BackgroundTransparency = 0.04, GroupTransparency = 1, ClipsDescendants = true, LayoutOrder = math.floor(tick() % 1e7) }, holder)
-	corner(card, 12); stroke(card, color, 0.55, 1)
-	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Top }, card)
-	new("Frame", { Size = UDim2.new(0, 3, 1, 0), BackgroundColor3 = color, BorderSizePixel = 0, LayoutOrder = 1 }, card)
-	local col = new("Frame", { Size = UDim2.new(1, -3, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, LayoutOrder = 2 }, card)
-	pad(col, 11, 14, 12, 13); vlist(col, 5)
-	local top = new("Frame", { Size = UDim2.new(1, 0, 0, 18), BackgroundTransparency = 1, LayoutOrder = 1 }, col)
-	local off = 0
-	if o.Icon then iconImage(top, o.Icon, UDim2.fromOffset(15, 15), color, UDim2.new(0, 0, 0.5, 0), Vector2.new(0, 0.5)) off = 22 end
-	local tl = ltext(top, o.Title or "Notification", 13, color, FB); tl.Position = UDim2.new(0, off, 0, 0); tl.Size = UDim2.new(1, -off, 1, 0)
+	if not holder then
+		-- bottom-right stack (where notifications usually live), newest at the bottom
+		holder = new("Frame", { Name = "NotifHolder", BackgroundTransparency = 1, Size = UDim2.new(0, 310, 1, -40), Position = UDim2.new(1, -20, 1, -20), AnchorPoint = Vector2.new(1, 1) }, gui)
+		new("UIListLayout", { FillDirection = Enum.FillDirection.Vertical, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Bottom, HorizontalAlignment = Enum.HorizontalAlignment.Right }, holder)
+	end
+	-- Figma style: [colored icon square] [title + message]. The card height is DRIVEN from the
+	-- measured text height (never AutomaticSize on the card + a scale child — that ballooned it).
+	local card = new("CanvasGroup", { Size = UDim2.new(1, 0, 0, 58), BackgroundColor3 = Color3.fromRGB(22, 22, 24), BackgroundTransparency = 0.02, GroupTransparency = 1, ClipsDescendants = true, LayoutOrder = math.floor(tick() % 1e7) }, holder)
+	corner(card, 13); stroke(card, Theme.White, 0.9, 1)
+	local iconBox = new("Frame", { Size = UDim2.fromOffset(34, 34), Position = UDim2.new(0, 12, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = color, BackgroundTransparency = 0.82 }, card); corner(iconBox, 9)
+	iconImage(iconBox, o.Icon or defIcons[o.Type or "Info"], UDim2.fromOffset(18, 18), color, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
+	local col = new("Frame", { Size = UDim2.new(1, -72, 0, 0), Position = UDim2.new(0, 56, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1 }, card); vlist(col, 2)
+	local tl = ltext(col, o.Title or "Notification", 13, Theme.Text, FB); tl.Size = UDim2.new(1, 0, 0, 16); tl.LayoutOrder = 1
 	if o.Content and o.Content ~= "" then
 		local msg = ltext(col, o.Content, 11, Theme.SubText, F); msg.LayoutOrder = 2; msg.Size = UDim2.new(1, 0, 0, 0); msg.AutomaticSize = Enum.AutomaticSize.Y; msg.TextWrapped = true; msg.TextYAlignment = Enum.TextYAlignment.Top
 	end
-	local track = new("Frame", { Size = UDim2.new(1, 0, 0, 3), BackgroundColor3 = Theme.White, BackgroundTransparency = 0.9, BorderSizePixel = 0, LayoutOrder = 3 }, col); corner(track, 2)
-	local fb = new("Frame", { Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = color, BorderSizePixel = 0 }, track); corner(fb, 2)
-	-- keep card height glued to the measured content (never AutomaticSize on the card itself)
-	local function sync() local h = col.AbsoluteSize.Y if h and h > 0 then card.Size = UDim2.new(1, 0, 0, h) end end
+	local function sync() local h = col.AbsoluteSize.Y or 0 if h < 34 then h = 34 end card.Size = UDim2.new(1, 0, 0, h + 22) end
 	col:GetPropertyChangedSignal("AbsoluteSize"):Connect(sync); task.defer(sync)
 	tween(card, 0.28, { GroupTransparency = 0 }) -- fade in
 	local dur = o.Duration or 4
-	tween(fb, dur, { Size = UDim2.new(0, 0, 1, 0) })
 	task.delay(dur, function() tween(card, 0.25, { GroupTransparency = 1 }) task.wait(0.3) card:Destroy() end)
 	return card
 end

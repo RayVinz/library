@@ -94,6 +94,12 @@ local function cleanupOld()
 			end
 		end
 	end
+	-- remove any leftover blur effect (it lives in Lighting, not under the GUI)
+	pcall(function()
+		for _, e in ipairs(game:GetService("Lighting"):GetChildren()) do
+			if e.Name == "RayVinzBlur" then e:Destroy() end
+		end
+	end)
 end
 
 local function shadow(parent, tr, extra)
@@ -101,6 +107,21 @@ local function shadow(parent, tr, extra)
 		ImageColor3 = Color3.new(0, 0, 0), ImageTransparency = tr or 0.4, ScaleType = Enum.ScaleType.Slice,
 		SliceCenter = Rect.new(49, 49, 450, 450), Size = UDim2.new(1, extra or 90, 1, extra or 90),
 		Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = 0 }, parent)
+end
+
+-- liquid-glass sheen: bright highlight at the top that fades down (glassy top edge)
+local function glassSheen(frame, r, zi)
+	local o = new("Frame", { Name = "Sheen", BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0, Size = UDim2.new(1, 0, 1, 0), ZIndex = zi or 1 }, frame)
+	corner(o, r or 12)
+	new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.8), NumberSequenceKeypoint.new(0.42, 0.965), NumberSequenceKeypoint.new(1, 1) }) }, o)
+	return o
+end
+-- soft neon glow (accent) behind an element
+local function glow(parent, color, tr, scale, zi)
+	return new("ImageLabel", { Name = "Glow", BackgroundTransparency = 1, Image = "rbxassetid://5028857084",
+		ImageColor3 = color or Theme.Accent, ImageTransparency = tr or 0.55, Size = UDim2.fromScale(scale or 1.6, scale or 1.6),
+		Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = zi or 0 }, parent)
 end
 
 -- ================= icons =================
@@ -164,15 +185,20 @@ function RayVinzUI:CreateWindow(opts)
 	local W, H = opts.Width or 660, opts.Height or 460
 
 	-- holder (positioned/dragged) -> shadow + rounded window inside
+	-- frosted-glass backdrop: blur the 3D scene behind the UI (iOS "liquid glass" look)
+	local blur = nil
+	pcall(function() blur = new("BlurEffect", { Name = "RayVinzBlur", Size = 0, Enabled = true }, game:GetService("Lighting")) end)
+	self._blur = blur
 	local holder = new("Frame", { Name = "Window", Visible = false, Size = UDim2.fromOffset(W, H), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1 }, gui)
 	self.Window = holder
 	local sh = shadow(holder, 1, 48)
 	-- CanvasGroup lets us fade the whole window (GroupTransparency) in one tween
-	local win = new("CanvasGroup", { Name = "Main", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Background, BackgroundTransparency = 0.06, GroupTransparency = 1, ClipsDescendants = true, ZIndex = 1 }, holder)
-	corner(win, 14); stroke(win, Theme.White, 0.9)
+	local win = new("CanvasGroup", { Name = "Main", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Background, BackgroundTransparency = 0.18, GroupTransparency = 1, ClipsDescendants = true, ZIndex = 1 }, holder)
+	corner(win, 16); stroke(win, Theme.White, 0.72, 1.4); glassSheen(win, 16, 1)
 	-- smooth open / close / minimize (scale + fade together, from the window's own center)
 	local function showWin(animate)
 		holder.Visible = true
+		if blur then tween(blur, 0.34, { Size = 18 }) end
 		if animate then
 			win.GroupTransparency = 1; sh.ImageTransparency = 1
 			holder.Size = UDim2.fromOffset(math.floor(W * 0.9), math.floor(H * 0.9))
@@ -184,6 +210,7 @@ function RayVinzUI:CreateWindow(opts)
 		end
 	end
 	local function hideWin()
+		if blur then tween(blur, 0.24, { Size = 0 }) end
 		tween(holder, 0.24, { Size = UDim2.fromOffset(math.floor(W * 0.9), math.floor(H * 0.9)) })
 		tween(win, 0.24, { GroupTransparency = 1 })
 		tween(sh, 0.24, { ImageTransparency = 1 })
@@ -238,11 +265,24 @@ function RayVinzUI:CreateWindow(opts)
 	draggable(title, holder)
 	new("Frame", { Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 0, 48), BackgroundColor3 = Theme.White, BackgroundTransparency = 0.92, BorderSizePixel = 0 }, win)
 
-	-- body: sidebar + content
-	local sidebar = new("ScrollingFrame", { Name = "Sidebar", Size = UDim2.new(0, 190, 1, -49), Position = UDim2.new(0, 0, 0, 49), BackgroundColor3 = Theme.Sidebar,
+	-- body: sidebar + content (glassy translucent sidebar)
+	local sidebar = new("ScrollingFrame", { Name = "Sidebar", Size = UDim2.new(0, 190, 1, -49), Position = UDim2.new(0, 0, 0, 49), BackgroundColor3 = Theme.Sidebar, BackgroundTransparency = 0.25,
 		BorderSizePixel = 0, ScrollBarThickness = 0, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y }, win)
 	pad(sidebar, 14, 12, 12, 12); vlist(sidebar, 3)
 	self.Sidebar = sidebar
+	-- sidebar search (filters tabs by title); opts.Search = false to disable
+	if opts.Search ~= false then
+		local sb = new("Frame", { Name = "Search", Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Theme.Field, BackgroundTransparency = 0.15, LayoutOrder = -2 }, sidebar); corner(sb, 8); stroke(sb, Theme.White, 0.85, 1)
+		iconImage(sb, "search", UDim2.fromOffset(13, 13), Theme.Muted, UDim2.new(0, 10, 0.5, 0), Vector2.new(0, 0.5))
+		local sbox = new("TextBox", { BackgroundTransparency = 1, Size = UDim2.new(1, -36, 1, 0), Position = UDim2.new(0, 30, 0, 0), PlaceholderText = "Search...", PlaceholderColor3 = Theme.Muted, Text = "", TextColor3 = Theme.Text, Font = FM, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false }, sb)
+		new("Frame", { Name = "SearchGap", Size = UDim2.new(1, 0, 0, 3), BackgroundTransparency = 1, LayoutOrder = -1 }, sidebar)
+		sbox:GetPropertyChangedSignal("Text"):Connect(function()
+			local q = string.lower(sbox.Text)
+			for _, t in ipairs(self._tabs) do
+				t._item.Visible = (q == "") or (string.find(string.lower(t._label.Text), q, 1, true) ~= nil)
+			end
+		end)
+	end
 	local content = new("Frame", { Name = "Content", Size = UDim2.new(1, -190, 1, -49), Position = UDim2.new(0, 190, 0, 49), BackgroundTransparency = 1 }, win)
 	self.Content = content
 
@@ -298,8 +338,10 @@ function RayVinzUI:Tab(opts)
 	opts = opts or {}; local tab = {}
 	local item = new("TextButton", { Name = "Tab", Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 34), BackgroundColor3 = Theme.Accent, BackgroundTransparency = 1, LayoutOrder = #self.Sidebar:GetChildren() }, self.Sidebar)
 	corner(item, 8)
-	local ic = iconImage(item, opts.Icon, UDim2.fromOffset(16, 16), Theme.SubText, UDim2.new(0, 10, 0.5, 0), Vector2.new(0, 0.5))
-	local lb = ltext(item, opts.Title or "Tab", 13, Theme.SubText, FM); lb.Position = UDim2.new(0, 36, 0, 0); lb.Size = UDim2.new(1, -46, 1, 0)
+	local tbar = new("Frame", { Size = UDim2.fromOffset(3, 0), Position = UDim2.new(0, 2, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = Theme.Accent, BorderSizePixel = 0, ZIndex = 2 }, item); corner(tbar, 2)
+	local ic = iconImage(item, opts.Icon, UDim2.fromOffset(16, 16), Theme.SubText, UDim2.new(0, 12, 0.5, 0), Vector2.new(0, 0.5)); ic.ZIndex = 2
+	local lb = ltext(item, opts.Title or "Tab", 13, Theme.SubText, FM); lb.Position = UDim2.new(0, 38, 0, 0); lb.Size = UDim2.new(1, -48, 1, 0); lb.ZIndex = 2
+	tab._bar = tbar
 	local page = new("ScrollingFrame", { Name = "Page", Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false,
 		ScrollBarThickness = 3, ScrollBarImageColor3 = Theme.Muted, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y }, self.Content)
 	pad(page, 18, 18, 18, 18); vlist(page, 16)
@@ -314,10 +356,11 @@ function RayVinzUI:_select(tab)
 	for _, t in ipairs(self._tabs) do
 		local on = t == tab
 		t._page.Visible = on
-		tween(t._item, 0.18, { BackgroundTransparency = on and 0.85 or 1 })
+		tween(t._item, 0.18, { BackgroundTransparency = on and 0.86 or 1 })
 		t._label.TextColor3 = on and Theme.Text or Theme.SubText
 		t._label.Font = on and FB or FM
 		t._icon.ImageColor3 = on and Theme.Accent or Theme.SubText
+		if t._bar then tween(t._bar, 0.18, { Size = UDim2.fromOffset(3, on and 18 or 0) }) end
 	end
 end
 
@@ -330,8 +373,8 @@ function RayVinzUI:_section(page, opts)
 		if opts.Icon then iconImage(hrow, opts.Icon, UDim2.fromOffset(13, 13), Theme.Muted, UDim2.new(0, 0, 0.5, 0), Vector2.new(0, 0.5)); off = 18 end
 		local hd = ltext(hrow, string.upper(opts.Title), 11, Theme.Muted, FB); hd.Position = UDim2.new(0, off, 0, 0); hd.Size = UDim2.new(1, -off, 1, 0)
 	end
-	local card = new("Frame", { Name = "Card", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Card, ClipsDescendants = true, LayoutOrder = #page:GetChildren() }, page)
-	corner(card, 12); stroke(card, Theme.White, 0.94); vlist(card, 0)
+	local card = new("Frame", { Name = "Card", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Card, BackgroundTransparency = 0.15, ClipsDescendants = true, LayoutOrder = #page:GetChildren() }, page)
+	corner(card, 12); stroke(card, Theme.White, 0.82, 1.2); grad(card, Color3.new(1, 1, 1), Color3.fromRGB(205, 205, 210), 90); vlist(card, 0)
 	section._card = card
 
 	-- base row (adds a divider only BETWEEN rows, never above the first one)
@@ -361,10 +404,12 @@ function RayVinzUI:_section(page, opts)
 		o = o or {}; local state = o.Default or false
 		local r = row(o.Description and 58 or 48); placeLabel(r, o.Title or "Toggle", 46, o.Description)
 		local sw = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(46, 28), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), BackgroundColor3 = state and Theme.Green or Theme.Select }, r); corner(sw, 14)
-		local knob = new("Frame", { Size = UDim2.fromOffset(24, 24), AnchorPoint = Vector2.new(0, 0.5), Position = state and UDim2.new(1, -26, 0.5, 0) or UDim2.new(0, 2, 0.5, 0), BackgroundColor3 = Theme.White }, sw); corner(knob, 12)
+		local gl = glow(sw, Theme.Green, state and 0.4 or 1, 1.7)
+		local knob = new("Frame", { Size = UDim2.fromOffset(24, 24), AnchorPoint = Vector2.new(0, 0.5), Position = state and UDim2.new(1, -26, 0.5, 0) or UDim2.new(0, 2, 0.5, 0), BackgroundColor3 = Theme.White, ZIndex = 2 }, sw); corner(knob, 12)
 		local function set(v, fire)
 			state = v
 			tween(sw, 0.18, { BackgroundColor3 = v and Theme.Green or Theme.Select })
+			tween(gl, 0.18, { ImageTransparency = v and 0.4 or 1 })
 			tween(knob, 0.18, { Position = v and UDim2.new(1, -26, 0.5, 0) or UDim2.new(0, 2, 0.5, 0) })
 			if fire ~= false and o.Callback then task.spawn(o.Callback, v) end
 		end
@@ -386,12 +431,17 @@ function RayVinzUI:_section(page, opts)
 			btn.MouseButton1Click:Connect(function() if o.Callback then task.spawn(o.Callback) end end)
 			return btn
 		end
-		-- full-width accent button
+		-- full-width accent button (hover scale + ripple + gradient)
 		local r = row(50)
 		local b = new("TextButton", { Text = o.Title or "Button", Font = FB, TextSize = 13, TextColor3 = Theme.AccentText, AutoButtonColor = false,
-			Size = UDim2.new(1, -28, 0, 38), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), BackgroundColor3 = Theme.Accent }, r); corner(b, 9)
+			Size = UDim2.new(1, -28, 0, 38), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), BackgroundColor3 = Theme.Accent, ClipsDescendants = true }, r); corner(b, 9); grad(b, Theme.Accent, Theme.Accent2, 25)
+		local sc = new("UIScale", { Scale = 1 }, b)
+		b.MouseEnter:Connect(function() tween(sc, 0.12, { Scale = 1.015 }) end)
+		b.MouseLeave:Connect(function() tween(sc, 0.12, { Scale = 1 }) end)
 		b.MouseButton1Click:Connect(function()
-			tween(b, 0.08, { BackgroundColor3 = Color3.fromRGB(224, 95, 172) }); task.wait(0.1); tween(b, 0.12, { BackgroundColor3 = Theme.Accent })
+			local rip = new("Frame", { BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.55, Size = UDim2.fromOffset(0, 0), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = 5 }, b); corner(rip, 100)
+			tween(rip, 0.42, { Size = UDim2.fromScale(2.4, 2.4), BackgroundTransparency = 1 })
+			task.delay(0.44, function() rip:Destroy() end)
 			if o.Callback then task.spawn(o.Callback) end
 		end)
 		return b
@@ -556,6 +606,19 @@ function RayVinzUI:_section(page, opts)
 		return { Set = function(n, t) if n then tl.Text = n end if t then sl.Text = t end end }
 	end
 
+	-- Banner (gradient / image hero for the Home page)
+	function section:Banner(o)
+		o = o or {}
+		local r = row(0)
+		local b = new("Frame", { Size = UDim2.new(1, 0, 0, o.Height or 96), BackgroundColor3 = o.Color or Theme.Accent, ClipsDescendants = true }, r); corner(b, 12)
+		grad(b, o.Color or Theme.Accent, o.Color2 or Theme.Accent2, o.Rotation or 35)
+		if o.Image then new("ImageLabel", { BackgroundTransparency = 1, Image = o.Image, Size = UDim2.fromScale(1, 1), ImageTransparency = o.ImageTransparency or 0.15, ScaleType = Enum.ScaleType.Crop }, b) end
+		new("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.45, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, b) -- readability overlay
+		local t1 = ltext(b, o.Title or "RayVinz Hub", 20, Theme.White, FB); t1.Position = UDim2.new(0, 16, 1, -48); t1.Size = UDim2.new(1, -32, 0, 24); t1.ZIndex = 3
+		local t2 = ltext(b, o.SubTitle or "", 12, Color3.fromRGB(228, 228, 234), FM); t2.Position = UDim2.new(0, 16, 1, -26); t2.Size = UDim2.new(1, -32, 0, 16); t2.ZIndex = 3
+		return r
+	end
+
 	-- Paragraph
 	function section:Paragraph(o)
 		o = o or {}
@@ -690,6 +753,41 @@ function RayVinzUI:Loading(o)
 	local t1 = ltext(card, o.Title or "RayVinz Hub", 14, Theme.Text, FB); t1.Position = UDim2.new(0, 66, 0, 17); t1.Size = UDim2.new(1, -80, 0, 18)
 	local t2 = ltext(card, o.SubTitle or "Loading...", 11, Theme.SubText, F); t2.Position = UDim2.new(0, 66, 0, 38); t2.Size = UDim2.new(1, -80, 0, 14)
 	return { Set = function(p) tween(fb, 0.3, { Size = UDim2.new(clamp(p, 0, 1), 0, 1, 0) }) end, Close = function() tween(card, 0.25, { GroupTransparency = 1 }) tween(overlay, 0.3, { BackgroundTransparency = 1 }) task.wait(0.32) overlay:Destroy() end }
+end
+
+-- ================= Theme / accent switcher =================
+RayVinzUI.AccentPresets = {
+	Pink   = { Color3.fromRGB(255, 121, 198), Color3.fromRGB(189, 147, 249) },
+	Purple = { Color3.fromRGB(189, 147, 249), Color3.fromRGB(139, 123, 255) },
+	Blue   = { Color3.fromRGB(10, 132, 255),  Color3.fromRGB(94, 180, 255) },
+	Green  = { Color3.fromRGB(48, 209, 88),   Color3.fromRGB(120, 230, 150) },
+	Red    = { Color3.fromRGB(255, 69, 58),   Color3.fromRGB(255, 130, 120) },
+	Orange = { Color3.fromRGB(255, 159, 10),  Color3.fromRGB(255, 196, 90) },
+}
+-- change the accent live (recolors existing accent-colored instances in the window)
+function RayVinzUI:SetAccent(color, color2)
+	if type(color) == "string" then local p = RayVinzUI.AccentPresets[color]; if p then color, color2 = p[1], p[2] end end
+	local old = Theme.Accent
+	Theme.Accent = color or Theme.Accent
+	Theme.Accent2 = color2 or Theme.Accent2
+	local gui = self.Gui or ActiveGui
+	if not gui then return self end
+	local function eq(a, b) return a and b and math.abs(a.R - b.R) < 0.02 and math.abs(a.G - b.G) < 0.02 and math.abs(a.B - b.B) < 0.02 end
+	for _, d in ipairs(gui:GetDescendants()) do
+		pcall(function()
+			if eq(d.BackgroundColor3, old) then d.BackgroundColor3 = Theme.Accent end
+		end)
+		pcall(function() if eq(d.ImageColor3, old) then d.ImageColor3 = Theme.Accent end end)
+		pcall(function() if eq(d.TextColor3, old) then d.TextColor3 = Theme.Accent end end)
+		pcall(function() if d:IsA("UIStroke") and eq(d.Color, old) then d.Color = Theme.Accent end end)
+		pcall(function()
+			if d:IsA("UIGradient") then
+				local kps = d.Color.Keypoints
+				if kps and #kps >= 2 and eq(kps[1].Value, old) then d.Color = ColorSequence.new(Theme.Accent, Theme.Accent2) end
+			end
+		end)
+	end
+	return self
 end
 
 -- ================= AntiSpy (protect your own script from remote spies / hooks) =================

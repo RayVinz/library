@@ -300,8 +300,8 @@ function RayVinzUI:CreateWindow(opts)
 end
 
 function RayVinzUI:_mountMobile(logo)
-	local btn = new("TextButton", { Name = "MobileToggle", Text = "", Size = UDim2.fromOffset(56, 56), Position = UDim2.new(0, 22, 0.5, -28), BackgroundColor3 = Color3.fromRGB(22, 22, 24), AutoButtonColor = false }, self.Gui)
-	corner(btn, 16); stroke(btn, Theme.White, 0.82, 1)
+	local btn = new("TextButton", { Name = "MobileToggle", Text = "", Size = UDim2.fromOffset(56, 56), Position = UDim2.new(0, 22, 0.5, -28), BackgroundColor3 = Color3.fromRGB(26, 26, 30), BackgroundTransparency = 0.28, AutoButtonColor = false }, self.Gui)
+	corner(btn, 17); stroke(btn, Theme.White, 0.62, 1.2); glassSheen(btn, 17, 0)
 	-- big logo, no pink box/glow
 	iconImage(btn, logo, UDim2.fromOffset(40, 40), Theme.White, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
 	-- draggable, and a tap (no real drag) toggles the window
@@ -704,9 +704,9 @@ function RayVinzUI:Notify(o)
 	end
 	-- Figma style: [colored icon square] [title + message]. The card height is DRIVEN from the
 	-- measured text height (never AutomaticSize on the card + a scale child — that ballooned it).
-	local card = new("CanvasGroup", { Size = UDim2.new(1, 0, 0, 58), BackgroundColor3 = Color3.fromRGB(22, 22, 24), BackgroundTransparency = 0.02, GroupTransparency = 1, ClipsDescendants = true, LayoutOrder = math.floor(tick() % 1e7) }, holder)
-	corner(card, 13); stroke(card, Theme.White, 0.9, 1)
-	local iconBox = new("Frame", { Size = UDim2.fromOffset(34, 34), Position = UDim2.new(0, 12, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = color, BackgroundTransparency = 0.78 }, card); corner(iconBox, 9)
+	local card = new("CanvasGroup", { Size = UDim2.new(1, 0, 0, 58), BackgroundColor3 = Color3.fromRGB(26, 26, 30), BackgroundTransparency = 0.22, GroupTransparency = 1, ClipsDescendants = true, LayoutOrder = math.floor(tick() % 1e7) }, holder)
+	corner(card, 14); stroke(card, Theme.White, 0.66, 1.2); glassSheen(card, 14, 1)
+	local iconBox = new("Frame", { Size = UDim2.fromOffset(34, 34), Position = UDim2.new(0, 12, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = color, BackgroundTransparency = 0.72 }, card); corner(iconBox, 9)
 	iconImage(iconBox, o.Icon or defIcons[o.Type or "Info"], UDim2.fromOffset(18, 18), Theme.White, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
 	local col = new("Frame", { Size = UDim2.new(1, -72, 0, 0), Position = UDim2.new(0, 56, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1 }, card); vlist(col, 2)
 	local tl = ltext(col, o.Title or "Notification", 13, Theme.Text, FB); tl.Size = UDim2.new(1, 0, 0, 16); tl.LayoutOrder = 1
@@ -741,10 +741,13 @@ end
 function RayVinzUI:Loading(o)
 	o = o or {}
 	local gui = self.Gui or ActiveGui
-	-- dim backdrop + small compact card (Figma style): progress bar on top, logo + text in a row
+	-- frosted glass loader: blur the scene + a translucent glass card
+	local lblur = nil
+	pcall(function() lblur = new("BlurEffect", { Name = "RayVinzBlur", Size = 0, Enabled = true }, game:GetService("Lighting")) end)
+	if lblur then tween(lblur, 0.3, { Size = 22 }) end
 	local overlay = new("Frame", { Name = "Loading", Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, ZIndex = 90 }, gui)
-	tween(overlay, 0.25, { BackgroundTransparency = 0.45 })
-	local card = new("CanvasGroup", { Size = UDim2.fromOffset(290, 72), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = Color3.fromRGB(22, 22, 24), BackgroundTransparency = 0.02, GroupTransparency = 1, ClipsDescendants = true, ZIndex = 91 }, overlay); corner(card, 14); stroke(card, Theme.White, 0.9, 1)
+	tween(overlay, 0.25, { BackgroundTransparency = 0.35 })
+	local card = new("CanvasGroup", { Size = UDim2.fromOffset(292, 74), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = Color3.fromRGB(26, 26, 30), BackgroundTransparency = 0.28, GroupTransparency = 1, ClipsDescendants = true, ZIndex = 91 }, overlay); corner(card, 16); stroke(card, Theme.White, 0.68, 1.2); glassSheen(card, 16, 1)
 	tween(card, 0.3, { GroupTransparency = 0 })
 	-- progress bar along the very top edge
 	local track = new("Frame", { Size = UDim2.new(1, 0, 0, 3), Position = UDim2.new(0, 0, 0, 0), BackgroundColor3 = Theme.White, BackgroundTransparency = 0.9, BorderSizePixel = 0 }, card)
@@ -755,7 +758,7 @@ function RayVinzUI:Loading(o)
 	-- title + subtitle (left of logo)
 	local t1 = ltext(card, o.Title or "RayVinz Hub", 14, Theme.Text, FB); t1.Position = UDim2.new(0, 66, 0, 17); t1.Size = UDim2.new(1, -80, 0, 18)
 	local t2 = ltext(card, o.SubTitle or "Loading...", 11, Theme.SubText, F); t2.Position = UDim2.new(0, 66, 0, 38); t2.Size = UDim2.new(1, -80, 0, 14)
-	return { Set = function(p) tween(fb, 0.3, { Size = UDim2.new(clamp(p, 0, 1), 0, 1, 0) }) end, Close = function() tween(card, 0.25, { GroupTransparency = 1 }) tween(overlay, 0.3, { BackgroundTransparency = 1 }) task.wait(0.32) overlay:Destroy() end }
+	return { Set = function(p) tween(fb, 0.3, { Size = UDim2.new(clamp(p, 0, 1), 0, 1, 0) }) end, Close = function() tween(card, 0.25, { GroupTransparency = 1 }) tween(overlay, 0.3, { BackgroundTransparency = 1 }) if lblur then tween(lblur, 0.3, { Size = 0 }) end task.wait(0.32) overlay:Destroy() if lblur then pcall(function() lblur:Destroy() end) end end }
 end
 
 -- ================= Theme / accent switcher =================

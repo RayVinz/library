@@ -136,6 +136,11 @@ function RayVinzUI:CreateWindow(opts)
 	opts = opts or {}
 	opts.Logo = opts.Logo or "sparkles" -- default hub icon (needs UI:LoadLucide())
 	opts.Version = opts.Version or opts.SubTitle or "v1.0.0"
+	-- no Title given -> auto-pull the current game's name
+	if not opts.Title then
+		local ok, info = pcall(function() return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId) end)
+		opts.Title = (ok and type(info) == "table" and info.Name) or "RayVinz Hub"
+	end
 	local self = setmetatable({}, { __index = RayVinzUI }); self._tabs = {}
 	local gui = new("ScreenGui", { Name = "RayVinzUI", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true }, guiParent())
 	self.Gui = gui; ActiveGui = gui
@@ -171,13 +176,30 @@ function RayVinzUI:CreateWindow(opts)
 
 	-- title bar
 	local title = new("Frame", { Name = "TitleBar", Size = UDim2.new(1, 0, 0, 48), BackgroundTransparency = 1 }, win)
-	local lights = new("Frame", { Size = UDim2.fromOffset(52, 12), Position = UDim2.new(0, 16, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundTransparency = 1 }, title)
+	local lights = new("Frame", { Size = UDim2.fromOffset(52, 14), Position = UDim2.new(0, 16, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundTransparency = 1 }, title)
 	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8), VerticalAlignment = Enum.VerticalAlignment.Center }, lights)
+	-- maximize toggle (green): swap between normal and a larger size
+	local maximized = false
+	local function maximize()
+		local cam = workspace.CurrentCamera
+		local sx = (cam and cam.ViewportSize.X or 1280) * 0.9
+		local sy = (cam and cam.ViewportSize.Y or 720) * 0.88
+		maximized = not maximized
+		W, H = maximized and math.floor(sx) or (opts.Width or 660), maximized and math.floor(sy) or (opts.Height or 460)
+		tween(holder, 0.3, { Size = UDim2.fromOffset(W, H) })
+	end
+	local glyphs = { "\u{2715}", "\u{2013}", "\u{2B0C}" } -- ✕  –  ⬌ (close / minimize / expand)
+	local marks = {}
 	for i, c in ipairs({ Color3.fromRGB(255, 95, 87), Color3.fromRGB(254, 188, 46), Color3.fromRGB(40, 200, 64) }) do
-		local d = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(12, 12), BackgroundColor3 = c, LayoutOrder = i }, lights); corner(d, 6)
+		local d = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(13, 13), BackgroundColor3 = c, LayoutOrder = i }, lights); corner(d, 7)
+		local m = new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = glyphs[i], Font = FB, TextSize = 9, TextColor3 = Color3.fromRGB(70, 35, 10), TextTransparency = 1 }, d); marks[i] = m
 		if i == 1 then d.MouseButton1Click:Connect(function() hideWin() end) end
 		if i == 2 then d.MouseButton1Click:Connect(function() hideWin() end) end
+		if i == 3 then d.MouseButton1Click:Connect(function() maximize() end) end
 	end
+	-- reveal all three glyphs while hovering the cluster (macOS behavior)
+	lights.MouseEnter:Connect(function() for _, m in ipairs(marks) do tween(m, 0.12, { TextTransparency = 0 }) end end)
+	lights.MouseLeave:Connect(function() for _, m in ipairs(marks) do tween(m, 0.12, { TextTransparency = 1 }) end end)
 	-- left-aligned brand: logo + (map name + faint "By author") + version/tags row
 	local brand = new("Frame", { Size = UDim2.new(1, -92, 1, 0), Position = UDim2.new(0, 80, 0, 0), BackgroundTransparency = 1 }, title)
 	local blogo = new("Frame", { Size = UDim2.fromOffset(38, 38), Position = UDim2.new(0, 0, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundTransparency = 1 }, brand)
@@ -221,16 +243,29 @@ function RayVinzUI:CreateWindow(opts)
 end
 
 function RayVinzUI:_mountMobile(logo)
-	local btn = new("TextButton", { Name = "MobileToggle", Text = "", Size = UDim2.fromOffset(58, 58), Position = UDim2.new(0, 22, 0.5, -29), BackgroundColor3 = Theme.Background, AutoButtonColor = false }, self.Gui)
-	corner(btn, 17); stroke(btn, Theme.Accent, 0, 2)
-	grad(btn, Color3.fromRGB(42, 33, 48), Color3.fromRGB(23, 20, 28), 115)
-	-- soft glow
-	new("ImageLabel", { BackgroundTransparency = 1, Image = "rbxassetid://5028857084", ImageColor3 = Theme.Accent, ImageTransparency = 0.35,
-		Size = UDim2.fromScale(1.9, 1.9), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = 0 }, btn)
-	local lg = new("Frame", { Size = UDim2.fromOffset(34, 34), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = Theme.Accent }, btn); corner(lg, 10); grad(lg, Theme.Accent, Theme.Accent2, 45)
-	iconImage(lg, logo, UDim2.fromOffset(22, 22), Theme.White, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
-	btn.MouseButton1Click:Connect(function()
-		if self.Window.Visible then self._hide() else self._show(true) end
+	local btn = new("TextButton", { Name = "MobileToggle", Text = "", Size = UDim2.fromOffset(56, 56), Position = UDim2.new(0, 22, 0.5, -28), BackgroundColor3 = Color3.fromRGB(22, 22, 24), AutoButtonColor = false }, self.Gui)
+	corner(btn, 16); stroke(btn, Theme.White, 0.82, 1)
+	-- big logo, no pink box/glow
+	iconImage(btn, logo, UDim2.fromOffset(40, 40), Theme.White, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
+	-- draggable, and a tap (no real drag) toggles the window
+	local dragging, moved, sp, si
+	btn.InputBegan:Connect(function(inp)
+		if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+			dragging = true; moved = false; sp = btn.Position; si = inp.Position
+			inp.Changed:Connect(function()
+				if inp.UserInputState == Enum.UserInputState.End then
+					dragging = false
+					if not moved then if self.Window.Visible then self._hide() else self._show(true) end end
+				end
+			end)
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(inp)
+		if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
+			local d = inp.Position - si
+			if math.abs(d.X) > 4 or math.abs(d.Y) > 4 then moved = true end
+			btn.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
+		end
 	end)
 	self.MobileButton = btn
 end
@@ -319,6 +354,18 @@ function RayVinzUI:_section(page, opts)
 	-- Button
 	function section:Button(o)
 		o = o or {}
+		-- WindUI row-style button: label left, icon right, whole row clickable (when Icon/Style given)
+		if o.Icon or o.Style == "Row" then
+			local r = row(46)
+			local lbl = placeLabel(r, o.Title or "Button", 40)
+			local ic = iconImage(r, o.Icon or "mouse-pointer-click", UDim2.fromOffset(16, 16), Theme.SubText, UDim2.new(1, -14, 0.5, 0), Vector2.new(1, 0.5))
+			local btn = new("TextButton", { Text = "", AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), ZIndex = 3 }, r)
+			btn.MouseEnter:Connect(function() tween(lbl, 0.12, { TextColor3 = Theme.Accent }) if ic.Visible then tween(ic, 0.12, { ImageColor3 = Theme.Accent }) end end)
+			btn.MouseLeave:Connect(function() tween(lbl, 0.12, { TextColor3 = Theme.Text }) if ic.Visible then tween(ic, 0.12, { ImageColor3 = Theme.SubText }) end end)
+			btn.MouseButton1Click:Connect(function() if o.Callback then task.spawn(o.Callback) end end)
+			return btn
+		end
+		-- full-width accent button
 		local r = row(50)
 		local b = new("TextButton", { Text = o.Title or "Button", Font = FB, TextSize = 13, TextColor3 = Theme.AccentText, AutoButtonColor = false,
 			Size = UDim2.new(1, -28, 0, 38), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), BackgroundColor3 = Theme.Accent }, r); corner(b, 9)
@@ -388,6 +435,17 @@ function RayVinzUI:_section(page, opts)
 		local r = row(48); placeLabel(r, o.Title or "Input", 150)
 		local holder = new("Frame", { Size = UDim2.fromOffset(150, 30), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), BackgroundColor3 = Theme.Field }, r); corner(holder, 8); pad(holder, 0, 10, 0, 10)
 		local tb = new("TextBox", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), Text = o.Default or "", PlaceholderText = o.Placeholder or "...", PlaceholderColor3 = Theme.Muted, TextColor3 = Theme.Text, Font = FM, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false }, holder)
+		tb.FocusLost:Connect(function() if o.Callback then task.spawn(o.Callback, tb.Text) end end)
+		return { Set = function(v) tb.Text = v end, Get = function() return tb.Text end }
+	end
+
+	-- Textarea (multi-line input: label on top, big box below)
+	function section:Textarea(o)
+		o = o or {}
+		local r = row(0); pad(r, 12, 14, 14, 14); vlist(r, 8)
+		local lbl = ltext(r, o.Title or "Input Textarea", 13, Theme.Text, FB); lbl.Size = UDim2.new(1, 0, 0, 16)
+		local holder = new("Frame", { Size = UDim2.new(1, 0, 0, o.Height or 90), BackgroundColor3 = Theme.Field }, r); corner(holder, 8); stroke(holder, Theme.White, 0.92, 1); pad(holder, 9, 11, 9, 11)
+		local tb = new("TextBox", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), Text = o.Default or "", PlaceholderText = o.Placeholder or "Enter Text...", PlaceholderColor3 = Theme.Muted, TextColor3 = Theme.Text, Font = FM, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, MultiLine = true, TextWrapped = true, ClearTextOnFocus = false }, holder)
 		tb.FocusLost:Connect(function() if o.Callback then task.spawn(o.Callback, tb.Text) end end)
 		return { Set = function(v) tb.Text = v end, Get = function() return tb.Text end }
 	end
@@ -541,8 +599,8 @@ function RayVinzUI:Notify(o)
 	-- measured text height (never AutomaticSize on the card + a scale child — that ballooned it).
 	local card = new("CanvasGroup", { Size = UDim2.new(1, 0, 0, 58), BackgroundColor3 = Color3.fromRGB(22, 22, 24), BackgroundTransparency = 0.02, GroupTransparency = 1, ClipsDescendants = true, LayoutOrder = math.floor(tick() % 1e7) }, holder)
 	corner(card, 13); stroke(card, Theme.White, 0.9, 1)
-	local iconBox = new("Frame", { Size = UDim2.fromOffset(34, 34), Position = UDim2.new(0, 12, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = color, BackgroundTransparency = 0.82 }, card); corner(iconBox, 9)
-	iconImage(iconBox, o.Icon or defIcons[o.Type or "Info"], UDim2.fromOffset(18, 18), color, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
+	local iconBox = new("Frame", { Size = UDim2.fromOffset(34, 34), Position = UDim2.new(0, 12, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = color, BackgroundTransparency = 0.78 }, card); corner(iconBox, 9)
+	iconImage(iconBox, o.Icon or defIcons[o.Type or "Info"], UDim2.fromOffset(18, 18), Theme.White, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
 	local col = new("Frame", { Size = UDim2.new(1, -72, 0, 0), Position = UDim2.new(0, 56, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1 }, card); vlist(col, 2)
 	local tl = ltext(col, o.Title or "Notification", 13, Theme.Text, FB); tl.Size = UDim2.new(1, 0, 0, 16); tl.LayoutOrder = 1
 	if o.Content and o.Content ~= "" then

@@ -334,18 +334,22 @@ function RayVinzUI:_section(page, opts)
 	corner(card, 12); stroke(card, Theme.White, 0.94); vlist(card, 0)
 	section._card = card
 
-	-- base row (handles the divider automatically)
+	-- base row (adds a divider only BETWEEN rows, never above the first one)
+	local rowCount = 0
 	local function row(h)
-		if #card:GetChildren() > 2 then
+		if rowCount > 0 then
 			new("Frame", { Size = UDim2.new(1, -28, 0, 1), Position = UDim2.new(0, 14, 0, 0), BackgroundColor3 = Theme.White, BackgroundTransparency = 0.93, BorderSizePixel = 0, LayoutOrder = #card:GetChildren() }, card)
 		end
+		rowCount = rowCount + 1
 		return new("Frame", { Size = UDim2.new(1, 0, 0, h), AutomaticSize = h == 0 and Enum.AutomaticSize.Y or Enum.AutomaticSize.None, BackgroundTransparency = 1, LayoutOrder = #card:GetChildren() }, card)
 	end
-	-- left label (vertically centered), reserves space on the right for a control
-	local function leftLabel(r, text, reserve)
-		return ltext(r, text, 13, Theme.Text, FM), nil
-	end
-	local function placeLabel(r, text, reserve)
+	-- left label (vertically centered); with a description it stacks title + grey subtext
+	local function placeLabel(r, text, reserve, desc)
+		if desc and desc ~= "" then
+			local l = ltext(r, text, 13, Theme.Text, FM); l.Position = UDim2.new(0, 14, 0, 9); l.Size = UDim2.new(1, -(reserve + 28), 0, 16)
+			local d = ltext(r, desc, 11, Theme.SubText, F); d.Position = UDim2.new(0, 14, 0, 26); d.Size = UDim2.new(1, -(reserve + 28), 0, 14)
+			return l
+		end
 		local l = ltext(r, text, 13, Theme.Text, FM)
 		l.Position = UDim2.new(0, 14, 0, 0); l.Size = UDim2.new(1, -(reserve + 28), 1, 0)
 		return l
@@ -355,7 +359,7 @@ function RayVinzUI:_section(page, opts)
 	-- Toggle
 	function section:Toggle(o)
 		o = o or {}; local state = o.Default or false
-		local r = row(48); placeLabel(r, o.Title or "Toggle", 46)
+		local r = row(o.Description and 58 or 48); placeLabel(r, o.Title or "Toggle", 46, o.Description)
 		local sw = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(46, 28), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), BackgroundColor3 = state and Theme.Green or Theme.Select }, r); corner(sw, 14)
 		local knob = new("Frame", { Size = UDim2.fromOffset(24, 24), AnchorPoint = Vector2.new(0, 0.5), Position = state and UDim2.new(1, -26, 0.5, 0) or UDim2.new(0, 2, 0.5, 0), BackgroundColor3 = Theme.White }, sw); corner(knob, 12)
 		local function set(v, fire)
@@ -373,8 +377,8 @@ function RayVinzUI:_section(page, opts)
 		o = o or {}
 		-- WindUI row-style button: label left, icon right, whole row clickable (when Icon/Style given)
 		if o.Icon or o.Style == "Row" then
-			local r = row(46)
-			local lbl = placeLabel(r, o.Title or "Button", 40)
+			local r = row(o.Description and 58 or 46)
+			local lbl = placeLabel(r, o.Title or "Button", 40, o.Description)
 			local ic = iconImage(r, o.Icon or "mouse-pointer-click", UDim2.fromOffset(16, 16), Theme.SubText, UDim2.new(1, -14, 0.5, 0), Vector2.new(1, 0.5))
 			local btn = new("TextButton", { Text = "", AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), ZIndex = 3 }, r)
 			btn.MouseEnter:Connect(function() tween(lbl, 0.12, { TextColor3 = Theme.Accent }) if ic.Visible then tween(ic, 0.12, { ImageColor3 = Theme.Accent }) end end)
@@ -396,8 +400,9 @@ function RayVinzUI:_section(page, opts)
 	-- Slider
 	function section:Slider(o)
 		o = o or {}; local min = o.Min or 0; local max = o.Max or 100; local val = o.Default or min
-		local r = row(54)
+		local r = row(o.Description and 66 or 54)
 		local lbl = ltext(r, o.Title or "Slider", 13, Theme.Text, FM); lbl.Position = UDim2.new(0, 14, 0, 11); lbl.Size = UDim2.new(1, -90, 0, 16)
+		if o.Description then local d = ltext(r, o.Description, 11, Theme.SubText, F); d.Position = UDim2.new(0, 14, 0, 28); d.Size = UDim2.new(1, -28, 0, 14) end
 		local valLbl = ltext(r, "", 13, Theme.Accent, FB, Enum.TextXAlignment.Right); valLbl.AnchorPoint = Vector2.new(1, 0); valLbl.Position = UDim2.new(1, -14, 0, 11); valLbl.Size = UDim2.new(0, 60, 0, 16)
 		local track = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.new(1, -28, 0, 6), AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 14, 1, -14), BackgroundColor3 = Theme.White, BackgroundTransparency = 0.85 }, r); corner(track, 3)
 		local fb = new("Frame", { Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Theme.Accent, BorderSizePixel = 0 }, track); corner(fb, 3)
@@ -420,7 +425,7 @@ function RayVinzUI:_section(page, opts)
 	-- Dropdown
 	function section:Dropdown(o)
 		o = o or {}; local options = o.Options or {}; local multi = o.Multi; local selected = multi and (o.Default or {}) or o.Default
-		local r = row(48); placeLabel(r, o.Title or "Dropdown", 150)
+		local r = row(o.Description and 58 or 48); placeLabel(r, o.Title or "Dropdown", 150, o.Description)
 		local box = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(150, 30), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), BackgroundColor3 = Theme.Field }, r); corner(box, 8)
 		local valTxt = ltext(box, "Select...", 12, Theme.Text, FM); valTxt.Position = UDim2.new(0, 10, 0, 0); valTxt.Size = UDim2.new(1, -28, 1, 0)
 		iconImage(box, "chevron-down", UDim2.fromOffset(12, 12), Theme.SubText, UDim2.new(1, -8, 0.5, 0), Vector2.new(1, 0.5))
@@ -468,7 +473,7 @@ function RayVinzUI:_section(page, opts)
 	-- Textbox
 	function section:Textbox(o)
 		o = o or {}
-		local r = row(48); placeLabel(r, o.Title or "Input", 150)
+		local r = row(o.Description and 58 or 48); placeLabel(r, o.Title or "Input", 150, o.Description)
 		local holder = new("Frame", { Size = UDim2.fromOffset(150, 30), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), BackgroundColor3 = Theme.Field }, r); corner(holder, 8); pad(holder, 0, 10, 0, 10)
 		local tb = new("TextBox", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), Text = o.Default or "", PlaceholderText = o.Placeholder or "...", PlaceholderColor3 = Theme.Muted, TextColor3 = Theme.Text, Font = FM, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false }, holder)
 		tb.FocusLost:Connect(function() if o.Callback then task.spawn(o.Callback, tb.Text) end end)
@@ -489,7 +494,7 @@ function RayVinzUI:_section(page, opts)
 	-- Keybind
 	function section:Keybind(o)
 		o = o or {}; local key = o.Default
-		local r = row(48); placeLabel(r, o.Title or "Keybind", 90)
+		local r = row(o.Description and 58 or 48); placeLabel(r, o.Title or "Keybind", 90, o.Description)
 		local btn = new("TextButton", { Text = key and key.Name or "None", Font = FB, TextSize = 12, TextColor3 = Theme.Text, AutoButtonColor = false, Size = UDim2.fromOffset(90, 30), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), BackgroundColor3 = Theme.Field }, r); corner(btn, 8)
 		local listening = false
 		btn.MouseButton1Click:Connect(function() listening = true btn.Text = "..." end)
@@ -503,7 +508,7 @@ function RayVinzUI:_section(page, opts)
 	-- ColorPicker
 	function section:ColorPicker(o)
 		o = o or {}; local color = o.Default or Theme.Accent; local h, s, v = color:ToHSV()
-		local r = row(48); placeLabel(r, o.Title or "Color", 44)
+		local r = row(o.Description and 58 or 48); placeLabel(r, o.Title or "Color", 44, o.Description)
 		local sw = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(44, 26), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), BackgroundColor3 = color }, r); corner(sw, 7); stroke(sw, Theme.White, 0.8)
 		local pop = new("Frame", { Visible = false, BackgroundColor3 = Theme.Elevated, Size = UDim2.fromOffset(200, 160), ZIndex = 60 }, self._gui); corner(pop, 10); stroke(pop, Theme.White, 0.88); pad(pop, 10, 10, 10, 10); vlist(pop, 8)
 		local sv = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 108), BackgroundColor3 = Color3.fromHSV(h, 1, 1), LayoutOrder = 1 }, pop); corner(sv, 6)
@@ -546,8 +551,8 @@ function RayVinzUI:_section(page, opts)
 		local ic = o.Avatar and resolveIcon(o.Avatar)
 		if ic then av.Image = ic.Image
 		elseif LocalPlayer then av.Image = "rbxthumb://type=AvatarHeadShot&id=" .. tostring(LocalPlayer.UserId) .. "&w=150&h=150" end
-		local tl = ltext(r, name, 14, Theme.Text, FB); tl.Position = UDim2.new(0, 66, 0, 11); tl.Size = UDim2.new(1, -80, 0, 18)
-		local sl = ltext(r, sub, 11, o.TagColor or Theme.Accent, FM); sl.Position = UDim2.new(0, 66, 0, 31); sl.Size = UDim2.new(1, -80, 0, 14)
+		local tl = ltext(r, name, 14, Theme.Text, FB); tl.Position = UDim2.new(0, 66, 0, 13); tl.Size = UDim2.new(1, -80, 0, 18)
+		local sl = ltext(r, sub, 11, o.TagColor or Theme.Accent, FM); sl.Position = UDim2.new(0, 66, 0, 33); sl.Size = UDim2.new(1, -80, 0, 14)
 		return { Set = function(n, t) if n then tl.Text = n end if t then sl.Text = t end end }
 	end
 

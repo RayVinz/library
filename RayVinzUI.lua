@@ -706,10 +706,11 @@ function RayVinzUI:AntiSpy(o)
 	local interval = o.Interval or 1
 	local removeGui = o.RemoveGui ~= false
 	local doKick = o.Kick ~= false
+	local doDetectHooks = o.DetectHooks == true -- OFF by default: IY / executors hook metamethods too (false positives)
 	local kickMsg = o.KickMessage or "remote spy detected\nไม่ได้แดกกูหรอกควาย"
 	local spyNames = {
 		"simplespy", "hydroxide", "remotespy", "remote-spy", "cobalt",
-		"utopiaspy", "remotelogger", "octospy", "turtlespy", "spygui", "iyspy",
+		"utopiaspy", "remotelogger", "octospy", "turtlespy",
 	}
 	-- visible window titles (caught even if the GUI name is randomized)
 	local spyTitles = {
@@ -733,11 +734,12 @@ function RayVinzUI:AntiSpy(o)
 		end)
 		return hit
 	end
-	local function consider(g, found)
+	local function consider(g, found, allowText)
 		if g.Name == "RayVinzUI" then return found end
 		local cls = (pcall(function() return g.ClassName end)) and g.ClassName or ""
-		if cls ~= "ScreenGui" and not isSpyName(g.Name) then return found end
-		if isSpyName(g.Name) or hasSpyText(g) then
+		local nameHit = isSpyName(g.Name)
+		if not nameHit and cls ~= "ScreenGui" then return found end -- text-scan only ScreenGuis
+		if nameHit or (allowText and hasSpyText(g)) then
 			if removeGui then pcall(function() g:Destroy() end) end
 			return true
 		end
@@ -745,23 +747,25 @@ function RayVinzUI:AntiSpy(o)
 	end
 	local function scanSpyGuis()
 		local found = false
-		-- 1) exploit GUI containers (CoreGui / hidden-ui); scan children + their text
-		local spots = {}
-		pcall(function() table.insert(spots, gethui()) end)
-		pcall(function() table.insert(spots, game:GetService("CoreGui")) end)
-		pcall(function() table.insert(spots, LocalPlayer:FindFirstChildOfClass("PlayerGui")) end)
-		for _, p in ipairs(spots) do
-			if p then
-				local ok, kids = pcall(function() return p:GetChildren() end)
-				if ok then for _, g in ipairs(kids) do found = consider(g, found) end end
+		-- 1) exploit zones: CoreGui + hidden-ui (name + title text)
+		for _, getter in ipairs({ function() return gethui() end, function() return game:GetService("CoreGui") end }) do
+			local ok, p = pcall(getter)
+			if ok and p then
+				local ok2, kids = pcall(function() return p:GetChildren() end)
+				if ok2 then for _, g in ipairs(kids) do found = consider(g, found, true) end end
 			end
 		end
-		-- 2) hidden / protected GUIs (e.g. Turtle Spy) parented to nil
+		-- 2) PlayerGui: name-match ONLY (it holds the game's own GUIs -> no text scan)
+		pcall(function()
+			local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+			if pg then for _, g in ipairs(pg:GetChildren()) do found = consider(g, found, false) end end
+		end)
+		-- 3) hidden / protected GUIs (e.g. Turtle Spy) parented to nil (name + text)
 		pcall(function()
 			if type(getnilinstances) == "function" then
 				for _, inst in ipairs(getnilinstances()) do
 					local ok, cls = pcall(function() return inst.ClassName end)
-					if ok and cls == "ScreenGui" then found = consider(inst, found) end
+					if ok and cls == "ScreenGui" then found = consider(inst, found, true) end
 				end
 			end
 		end)
@@ -783,12 +787,11 @@ function RayVinzUI:AntiSpy(o)
 		if o.Callback then pcall(o.Callback, reasons) end
 		if doKick then pcall(function() LocalPlayer:Kick(kickMsg) end) end
 	end
-	pcall(function() warn("[RayVinz] AntiSpy active (kick=" .. tostring(doKick) .. ")") end)
+	pcall(function() warn("[RayVinz] AntiSpy active (kick=" .. tostring(doKick) .. ", hooks=" .. tostring(doDetectHooks) .. ")") end)
 	task.spawn(function()
 		while true do
-			local reasons = detectHooks()
-			local guiFound = scanSpyGuis()
-			if guiFound then table.insert(reasons, "remote spy GUI found") end
+			local reasons = doDetectHooks and detectHooks() or {}
+			if scanSpyGuis() then table.insert(reasons, "remote spy GUI found") end
 			if #reasons > 0 then react(reasons) if doKick then break end end
 			task.wait(interval)
 		end

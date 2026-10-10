@@ -217,6 +217,16 @@ function RayVinzUI:CreateWindow(opts)
 		task.delay(0.26, function() holder.Visible = false end)
 	end
 	self._show, self._hide = showWin, hideWin
+	-- responsive: shrink the window to fit small screens / mobile
+	local uiScale = new("UIScale", { Scale = 1 }, holder)
+	local function fitScale()
+		local cam = workspace and workspace.CurrentCamera
+		if not cam then return end
+		local vp = cam.ViewportSize
+		uiScale.Scale = clamp(math.min(1, (vp.X - 24) / W, (vp.Y - 24) / H), 0.45, 1)
+	end
+	pcall(fitScale)
+	pcall(function() workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fitScale) end)
 
 	-- title bar
 	local title = new("Frame", { Name = "TitleBar", Size = UDim2.new(1, 0, 0, 48), BackgroundTransparency = 1 }, win)

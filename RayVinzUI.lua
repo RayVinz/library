@@ -424,27 +424,41 @@ function RayVinzUI:_section(page, opts)
 		local box = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(150, 30), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), BackgroundColor3 = Theme.Field }, r); corner(box, 8)
 		local valTxt = ltext(box, "Select...", 12, Theme.Text, FM); valTxt.Position = UDim2.new(0, 10, 0, 0); valTxt.Size = UDim2.new(1, -28, 1, 0)
 		iconImage(box, "chevron-down", UDim2.fromOffset(12, 12), Theme.SubText, UDim2.new(1, -8, 0.5, 0), Vector2.new(1, 0.5))
-		local list = new("Frame", { Visible = false, BackgroundColor3 = Theme.Elevated, Size = UDim2.fromOffset(160, 0), AutomaticSize = Enum.AutomaticSize.Y, ClipsDescendants = true, ZIndex = 50 }, self._gui); corner(list, 10); stroke(list, Theme.White, 0.88); pad(list, 6, 6, 6, 6); vlist(list, 2)
+		-- CanvasGroup so we can fade the whole list on open/close
+		local list = new("CanvasGroup", { Visible = false, BackgroundColor3 = Theme.Elevated, Size = UDim2.fromOffset(160, 0), AutomaticSize = Enum.AutomaticSize.Y, GroupTransparency = 1, ClipsDescendants = true, ZIndex = 50 }, self._gui); corner(list, 10); stroke(list, Theme.White, 0.88); pad(list, 6, 6, 6, 6); vlist(list, 2)
 		-- fullscreen click-catcher: closes the list when you click/drag anywhere else
 		local catcher = new("TextButton", { Name = "DropCatcher", Text = "", AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 49 }, self._gui)
+		local tx, ty = 0, 0
 		local reposition, closeList
 		local function display() if multi then valTxt.Text = #selected > 0 and table.concat(selected, ", ") or "None" else valTxt.Text = selected and tostring(selected) or "Select..." end end
 		local function rebuild()
 			for _, c in ipairs(list:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
 			for i, opt in ipairs(options) do
 				local chosen = multi and (indexOf(selected, opt) ~= nil) or (selected == opt)
-				local ob = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Theme.Accent, BackgroundTransparency = chosen and 0.82 or 1, LayoutOrder = i, ZIndex = 51 }, list); corner(ob, 7)
-				local ol = ltext(ob, tostring(opt), 12, chosen and Theme.Text or Theme.SubText, FM); ol.Position = UDim2.new(0, 10, 0, 0); ol.Size = UDim2.new(1, -20, 1, 0); ol.ZIndex = 51
+				local ob = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Theme.Accent, BackgroundTransparency = chosen and 0.82 or 1, LayoutOrder = i }, list); corner(ob, 7)
+				local ol = ltext(ob, tostring(opt), 12, chosen and Theme.Text or Theme.SubText, FM); ol.Position = UDim2.new(0, 10, 0, 0); ol.Size = UDim2.new(1, -20, 1, 0)
 				ob.MouseButton1Click:Connect(function()
 					if multi then local idx = indexOf(selected, opt) if idx then table.remove(selected, idx) else table.insert(selected, opt) end rebuild() else selected = opt closeList() end
 					display(); if o.Callback then task.spawn(o.Callback, selected) end
 				end)
 			end
 		end
-		reposition = function() list.Position = UDim2.fromOffset(box.AbsolutePosition.X, box.AbsolutePosition.Y + 34); list.Size = UDim2.fromOffset(math.max(box.AbsoluteSize.X, 150), 0) end
-		closeList = function() list.Visible = false; catcher.Visible = false end
-		local function openList() reposition(); rebuild(); list.Visible = true; catcher.Visible = true end
-		box.MouseButton1Click:Connect(function() if list.Visible then closeList() else openList() end end)
+		reposition = function()
+			tx, ty = box.AbsolutePosition.X, box.AbsolutePosition.Y + 34
+			list.Size = UDim2.fromOffset(math.max(box.AbsoluteSize.X, 150), 0)
+			if list.Visible then list.Position = UDim2.fromOffset(tx, ty) end
+		end
+		closeList = function()
+			catcher.Visible = false
+			tween(list, 0.14, { GroupTransparency = 1, Position = UDim2.fromOffset(tx, ty - 6) })
+			task.delay(0.15, function() if list.GroupTransparency > 0.9 then list.Visible = false end end)
+		end
+		local function openList()
+			reposition(); rebuild()
+			list.GroupTransparency = 1; list.Position = UDim2.fromOffset(tx, ty - 6); list.Visible = true; catcher.Visible = true
+			tween(list, 0.16, { GroupTransparency = 0, Position = UDim2.fromOffset(tx, ty) }) -- fade + slide down
+		end
+		box.MouseButton1Click:Connect(function() if list.Visible and list.GroupTransparency < 0.5 then closeList() else openList() end end)
 		catcher.MouseButton1Click:Connect(closeList)
 		box:GetPropertyChangedSignal("AbsolutePosition"):Connect(function() if list.Visible then reposition() end end)
 		display(); rebuild()

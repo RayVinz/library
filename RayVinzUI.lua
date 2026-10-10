@@ -28,9 +28,9 @@ local Theme = {
 	Error      = Color3.fromRGB(255, 69, 58),
 	White      = Color3.fromRGB(255, 255, 255),
 }
-local F  = Enum.Font.Gotham
-local FM = Enum.Font.GothamMedium
-local FB = Enum.Font.GothamBold
+local F  = Enum.Font.GothamMedium -- body (was Gotham) — fatter overall
+local FM = Enum.Font.GothamBold   -- labels (was GothamMedium)
+local FB = Enum.Font.GothamBold   -- titles / values
 
 -- ================= helpers =================
 local function clamp(x, a, b) if x < a then return a elseif x > b then return b else return x end end
@@ -425,23 +425,28 @@ function RayVinzUI:_section(page, opts)
 		local valTxt = ltext(box, "Select...", 12, Theme.Text, FM); valTxt.Position = UDim2.new(0, 10, 0, 0); valTxt.Size = UDim2.new(1, -28, 1, 0)
 		iconImage(box, "chevron-down", UDim2.fromOffset(12, 12), Theme.SubText, UDim2.new(1, -8, 0.5, 0), Vector2.new(1, 0.5))
 		local list = new("Frame", { Visible = false, BackgroundColor3 = Theme.Elevated, Size = UDim2.fromOffset(160, 0), AutomaticSize = Enum.AutomaticSize.Y, ClipsDescendants = true, ZIndex = 50 }, self._gui); corner(list, 10); stroke(list, Theme.White, 0.88); pad(list, 6, 6, 6, 6); vlist(list, 2)
+		-- fullscreen click-catcher: closes the list when you click/drag anywhere else
+		local catcher = new("TextButton", { Name = "DropCatcher", Text = "", AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 49 }, self._gui)
+		local reposition, closeList
 		local function display() if multi then valTxt.Text = #selected > 0 and table.concat(selected, ", ") or "None" else valTxt.Text = selected and tostring(selected) or "Select..." end end
 		local function rebuild()
 			for _, c in ipairs(list:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
 			for i, opt in ipairs(options) do
 				local chosen = multi and (indexOf(selected, opt) ~= nil) or (selected == opt)
-				local ob = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Theme.Accent, BackgroundTransparency = chosen and 0.82 or 1, LayoutOrder = i }, list); corner(ob, 7)
-				local ol = ltext(ob, tostring(opt), 12, chosen and Theme.Text or Theme.SubText, FM); ol.Position = UDim2.new(0, 10, 0, 0); ol.Size = UDim2.new(1, -20, 1, 0)
+				local ob = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Theme.Accent, BackgroundTransparency = chosen and 0.82 or 1, LayoutOrder = i, ZIndex = 51 }, list); corner(ob, 7)
+				local ol = ltext(ob, tostring(opt), 12, chosen and Theme.Text or Theme.SubText, FM); ol.Position = UDim2.new(0, 10, 0, 0); ol.Size = UDim2.new(1, -20, 1, 0); ol.ZIndex = 51
 				ob.MouseButton1Click:Connect(function()
-					if multi then local idx = indexOf(selected, opt) if idx then table.remove(selected, idx) else table.insert(selected, opt) end rebuild() else selected = opt list.Visible = false end
+					if multi then local idx = indexOf(selected, opt) if idx then table.remove(selected, idx) else table.insert(selected, opt) end rebuild() else selected = opt closeList() end
 					display(); if o.Callback then task.spawn(o.Callback, selected) end
 				end)
 			end
 		end
-		box.MouseButton1Click:Connect(function()
-			list.Position = UDim2.fromOffset(box.AbsolutePosition.X, box.AbsolutePosition.Y + 34); list.Size = UDim2.fromOffset(math.max(box.AbsoluteSize.X, 150), 0); list.Visible = not list.Visible
-			if list.Visible then rebuild() end
-		end)
+		reposition = function() list.Position = UDim2.fromOffset(box.AbsolutePosition.X, box.AbsolutePosition.Y + 34); list.Size = UDim2.fromOffset(math.max(box.AbsoluteSize.X, 150), 0) end
+		closeList = function() list.Visible = false; catcher.Visible = false end
+		local function openList() reposition(); rebuild(); list.Visible = true; catcher.Visible = true end
+		box.MouseButton1Click:Connect(function() if list.Visible then closeList() else openList() end end)
+		catcher.MouseButton1Click:Connect(closeList)
+		box:GetPropertyChangedSignal("AbsolutePosition"):Connect(function() if list.Visible then reposition() end end)
 		display(); rebuild()
 		return { Set = function(v) selected = v display() rebuild() if o.Callback then task.spawn(o.Callback, selected) end end, Get = function() return selected end }
 	end

@@ -75,9 +75,25 @@ local function draggable(handle, target)
 end
 
 local function guiParent()
-	local ok, cg = pcall(function() return game:GetService("CoreGui") end)
-	if ok and cg then return cg end
+	local ok, h = pcall(function() return gethui() end)
+	if ok and h then return h end
+	local ok2, cg = pcall(function() return game:GetService("CoreGui") end)
+	if ok2 and cg then return cg end
 	return LocalPlayer:WaitForChild("PlayerGui")
+end
+-- remove any previous RayVinzUI instances (so re-running the script doesn't stack GUIs)
+local function cleanupOld()
+	local spots = {}
+	pcall(function() table.insert(spots, gethui()) end)
+	pcall(function() table.insert(spots, game:GetService("CoreGui")) end)
+	pcall(function() table.insert(spots, LocalPlayer:FindFirstChildOfClass("PlayerGui")) end)
+	for _, p in ipairs(spots) do
+		if p then
+			for _, g in ipairs(p:GetChildren()) do
+				if g.Name == "RayVinzUI" then pcall(function() g:Destroy() end) end
+			end
+		end
+	end
 end
 
 local function shadow(parent, tr, extra)
@@ -142,6 +158,7 @@ function RayVinzUI:CreateWindow(opts)
 		opts.Title = (ok and type(info) == "table" and info.Name) or "RayVinz Hub"
 	end
 	local self = setmetatable({}, { __index = RayVinzUI }); self._tabs = {}
+	cleanupOld() -- destroy any previous RayVinzUI so re-running never stacks windows/buttons
 	local gui = new("ScreenGui", { Name = "RayVinzUI", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true }, guiParent())
 	self.Gui = gui; ActiveGui = gui
 	local W, H = opts.Width or 660, opts.Height or 460
@@ -188,18 +205,18 @@ function RayVinzUI:CreateWindow(opts)
 		W, H = maximized and math.floor(sx) or (opts.Width or 660), maximized and math.floor(sy) or (opts.Height or 460)
 		tween(holder, 0.3, { Size = UDim2.fromOffset(W, H) })
 	end
-	local glyphs = { "\u{2715}", "\u{2013}", "\u{2B0C}" } -- ✕  –  ⬌ (close / minimize / expand)
+	local glyphs = { "x", "minus", "maximize-2" } -- lucide icons: close / minimize / expand
 	local marks = {}
 	for i, c in ipairs({ Color3.fromRGB(255, 95, 87), Color3.fromRGB(254, 188, 46), Color3.fromRGB(40, 200, 64) }) do
 		local d = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(13, 13), BackgroundColor3 = c, LayoutOrder = i }, lights); corner(d, 7)
-		local m = new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = glyphs[i], Font = FB, TextSize = 9, TextColor3 = Color3.fromRGB(70, 35, 10), TextTransparency = 1 }, d); marks[i] = m
+		local m = iconImage(d, glyphs[i], UDim2.fromOffset(9, 9), Color3.fromRGB(60, 30, 10), UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5)); m.ImageTransparency = 1; marks[i] = m
 		if i == 1 then d.MouseButton1Click:Connect(function() hideWin() end) end
 		if i == 2 then d.MouseButton1Click:Connect(function() hideWin() end) end
 		if i == 3 then d.MouseButton1Click:Connect(function() maximize() end) end
 	end
 	-- reveal all three glyphs while hovering the cluster (macOS behavior)
-	lights.MouseEnter:Connect(function() for _, m in ipairs(marks) do tween(m, 0.12, { TextTransparency = 0 }) end end)
-	lights.MouseLeave:Connect(function() for _, m in ipairs(marks) do tween(m, 0.12, { TextTransparency = 1 }) end end)
+	lights.MouseEnter:Connect(function() for _, m in ipairs(marks) do tween(m, 0.12, { ImageTransparency = 0 }) end end)
+	lights.MouseLeave:Connect(function() for _, m in ipairs(marks) do tween(m, 0.12, { ImageTransparency = 1 }) end end)
 	-- left-aligned brand: logo + (map name + faint "By author") + version/tags row
 	local brand = new("Frame", { Size = UDim2.new(1, -92, 1, 0), Position = UDim2.new(0, 80, 0, 0), BackgroundTransparency = 1 }, title)
 	local blogo = new("Frame", { Size = UDim2.fromOffset(38, 38), Position = UDim2.new(0, 0, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundTransparency = 1 }, brand)
@@ -252,12 +269,6 @@ function RayVinzUI:_mountMobile(logo)
 	btn.InputBegan:Connect(function(inp)
 		if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
 			dragging = true; moved = false; sp = btn.Position; si = inp.Position
-			inp.Changed:Connect(function()
-				if inp.UserInputState == Enum.UserInputState.End then
-					dragging = false
-					if not moved then if self.Window.Visible then self._hide() else self._show(true) end end
-				end
-			end)
 		end
 	end)
 	UserInputService.InputChanged:Connect(function(inp)
@@ -265,6 +276,12 @@ function RayVinzUI:_mountMobile(logo)
 			local d = inp.Position - si
 			if math.abs(d.X) > 4 or math.abs(d.Y) > 4 then moved = true end
 			btn.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(inp)
+		if dragging and (inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch) then
+			dragging = false
+			if not moved then if self.Window.Visible then self._hide() else self._show(true) end end
 		end
 	end)
 	self.MobileButton = btn
@@ -587,7 +604,7 @@ function RayVinzUI:Notify(o)
 	o = o or {}
 	local colors = { Info = Theme.Info, Success = Theme.Green, Warning = Theme.Warning, Error = Theme.Error }
 	local color = colors[o.Type or "Info"] or Theme.Info
-	local defIcons = { Info = "info", Success = "circle-check", Warning = "triangle-alert", Error = "circle-x" }
+	local defIcons = { Info = "info", Success = "check", Warning = "alert-triangle", Error = "x" }
 	local gui = self.Gui or ActiveGui
 	local holder = gui:FindFirstChild("NotifHolder")
 	if not holder then
@@ -643,9 +660,8 @@ function RayVinzUI:Loading(o)
 	local track = new("Frame", { Size = UDim2.new(1, 0, 0, 3), Position = UDim2.new(0, 0, 0, 0), BackgroundColor3 = Theme.White, BackgroundTransparency = 0.9, BorderSizePixel = 0 }, card)
 	local fb = new("Frame", { Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Theme.Accent, BorderSizePixel = 0 }, track); grad(fb, Theme.Accent, Theme.Accent2, 0)
 	tween(fb, 2.2, { Size = UDim2.new(0.92, 0, 1, 0) }) -- auto loading animation
-	-- logo (small gradient square)
-	local lg = new("Frame", { Size = UDim2.fromOffset(40, 40), Position = UDim2.new(0, 14, 0.5, 2), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = Theme.Accent }, card); corner(lg, 11); grad(lg, Theme.Accent, Theme.Accent2, 45)
-	iconImage(lg, o.Logo, UDim2.fromOffset(24, 24), Theme.White, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
+	-- logo (big, no pink box)
+	iconImage(card, o.Logo, UDim2.fromOffset(44, 44), Theme.White, UDim2.new(0, 14, 0.5, 2), Vector2.new(0, 0.5))
 	-- title + subtitle (left of logo)
 	local t1 = ltext(card, o.Title or "RayVinz Hub", 14, Theme.Text, FB); t1.Position = UDim2.new(0, 66, 0, 17); t1.Size = UDim2.new(1, -80, 0, 18)
 	local t2 = ltext(card, o.SubTitle or "Loading...", 11, Theme.SubText, F); t2.Position = UDim2.new(0, 66, 0, 38); t2.Size = UDim2.new(1, -80, 0, 14)

@@ -193,12 +193,12 @@ function RayVinzUI:CreateWindow(opts)
 	self.Window = holder
 	local sh = shadow(holder, 1, 48)
 	-- CanvasGroup lets us fade the whole window (GroupTransparency) in one tween
-	local win = new("CanvasGroup", { Name = "Main", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Background, BackgroundTransparency = 0.18, GroupTransparency = 1, ClipsDescendants = true, ZIndex = 1 }, holder)
+	local win = new("CanvasGroup", { Name = "Main", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Background, BackgroundTransparency = 0.24, GroupTransparency = 1, ClipsDescendants = true, ZIndex = 1 }, holder)
 	corner(win, 16); stroke(win, Theme.White, 0.72, 1.4); glassSheen(win, 16, 1)
 	-- smooth open / close / minimize (scale + fade together, from the window's own center)
 	local function showWin(animate)
 		holder.Visible = true
-		if blur then tween(blur, 0.34, { Size = 18 }) end
+		if blur then tween(blur, 0.34, { Size = 24 }) end
 		if animate then
 			win.GroupTransparency = 1; sh.ImageTransparency = 1
 			holder.Size = UDim2.fromOffset(math.floor(W * 0.9), math.floor(H * 0.9))
@@ -373,7 +373,7 @@ function RayVinzUI:_section(page, opts)
 		if opts.Icon then iconImage(hrow, opts.Icon, UDim2.fromOffset(13, 13), Theme.Muted, UDim2.new(0, 0, 0.5, 0), Vector2.new(0, 0.5)); off = 18 end
 		local hd = ltext(hrow, string.upper(opts.Title), 11, Theme.Muted, FB); hd.Position = UDim2.new(0, off, 0, 0); hd.Size = UDim2.new(1, -off, 1, 0)
 	end
-	local card = new("Frame", { Name = "Card", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Card, BackgroundTransparency = 0.15, ClipsDescendants = true, LayoutOrder = #page:GetChildren() }, page)
+	local card = new("Frame", { Name = "Card", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Card, BackgroundTransparency = 0.22, ClipsDescendants = true, LayoutOrder = #page:GetChildren() }, page)
 	corner(card, 12); stroke(card, Theme.White, 0.82, 1.2); grad(card, Color3.new(1, 1, 1), Color3.fromRGB(205, 205, 210), 90); vlist(card, 0)
 	section._card = card
 
@@ -403,14 +403,13 @@ function RayVinzUI:_section(page, opts)
 	function section:Toggle(o)
 		o = o or {}; local state = o.Default or false
 		local r = row(o.Description and 58 or 48); placeLabel(r, o.Title or "Toggle", 46, o.Description)
-		local sw = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(46, 28), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), BackgroundColor3 = state and Theme.Green or Theme.Select, BackgroundTransparency = 0.1 }, r); corner(sw, 14); stroke(sw, Theme.White, 0.82, 1)
-		local gl = glow(sw, Theme.Green, state and 0.4 or 1, 1.7)
-		local knob = new("Frame", { Size = UDim2.fromOffset(24, 24), AnchorPoint = Vector2.new(0, 0.5), Position = state and UDim2.new(1, -26, 0.5, 0) or UDim2.new(0, 2, 0.5, 0), BackgroundColor3 = Theme.White, ZIndex = 2 }, sw); corner(knob, 12)
+		-- glassy switch: translucent track, soft white edge, floating knob (no clipped glow halo)
+		local sw = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(46, 28), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), BackgroundColor3 = state and Theme.Green or Theme.Select, BackgroundTransparency = 0.35 }, r); corner(sw, 14); stroke(sw, Theme.White, 0.7, 1)
+		local knob = new("Frame", { Size = UDim2.fromOffset(22, 22), AnchorPoint = Vector2.new(0, 0.5), Position = state and UDim2.new(1, -24, 0.5, 0) or UDim2.new(0, 3, 0.5, 0), BackgroundColor3 = Theme.White, ZIndex = 2 }, sw); corner(knob, 11)
 		local function set(v, fire)
 			state = v
 			tween(sw, 0.18, { BackgroundColor3 = v and Theme.Green or Theme.Select })
-			tween(gl, 0.18, { ImageTransparency = v and 0.4 or 1 })
-			tween(knob, 0.18, { Position = v and UDim2.new(1, -26, 0.5, 0) or UDim2.new(0, 2, 0.5, 0) })
+			tween(knob, 0.18, { Position = v and UDim2.new(1, -24, 0.5, 0) or UDim2.new(0, 3, 0.5, 0) })
 			if fire ~= false and o.Callback then task.spawn(o.Callback, v) end
 		end
 		sw.MouseButton1Click:Connect(function() set(not state) end)
@@ -650,7 +649,7 @@ function RayVinzUI:_section(page, opts)
 		local grid, rowN = {}, nil
 		for i, it in ipairs(items or {}) do
 			if (i - 1) % 2 == 0 then rowN = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 56), LayoutOrder = i }, r); new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 12) }, rowN) end
-			local c = new("Frame", { BackgroundColor3 = Theme.Elevated, BackgroundTransparency = 0.45, Size = UDim2.new(0.5, -6, 1, 0), LayoutOrder = i }, rowN); corner(c, 11); stroke(c, Theme.White, 0.8, 1); pad(c, 11, 12, 11, 12); vlist(c, 7)
+			local c = new("Frame", { BackgroundColor3 = Theme.Elevated, BackgroundTransparency = 0.55, Size = UDim2.new(0.5, -6, 1, 0), LayoutOrder = i }, rowN); corner(c, 12); stroke(c, Theme.White, 0.68, 1.2); grad(c, Color3.new(1, 1, 1), Color3.fromRGB(190, 190, 200), 90); pad(c, 11, 12, 11, 12); vlist(c, 7)
 			local top = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 14) }, c)
 			iconImage(top, it.Icon, UDim2.fromOffset(13, 13), Theme.SubText, UDim2.new(0, 0, 0.5, 0), Vector2.new(0, 0.5))
 			local tl = ltext(top, it.Label or "", 11, Theme.SubText, FM); tl.Position = UDim2.new(0, it.Icon and 19 or 0, 0, 0); tl.Size = UDim2.new(1, -19, 1, 0)

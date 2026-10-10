@@ -709,10 +709,16 @@ function RayVinzUI:AntiSpy(o)
 	local kickMsg = o.KickMessage or "remote spy detected\nไม่ได้แดกกูหรอกควาย"
 	local spyNames = {
 		"simplespy", "hydroxide", "remotespy", "remote-spy", "cobalt",
-		"utopiaspy", "remotelogger", "spygui", "sirhurt",
+		"utopiaspy", "remotelogger", "octospy", "turtlespy", "spygui", "iyspy",
 	}
+	local function isSpy(name)
+		local n = string.lower(name or "")
+		for _, s in ipairs(spyNames) do if string.find(n, s, 1, true) then return true end end
+		return false
+	end
 	local function scanSpyGuis()
 		local found = false
+		-- 1) normal GUI containers
 		local spots = {}
 		pcall(function() table.insert(spots, gethui()) end)
 		pcall(function() table.insert(spots, game:GetService("CoreGui")) end)
@@ -720,19 +726,25 @@ function RayVinzUI:AntiSpy(o)
 		for _, p in ipairs(spots) do
 			if p then
 				for _, g in ipairs(p:GetChildren()) do
-					if g.Name ~= "RayVinzUI" then
-						local n = string.lower(g.Name)
-						for _, s in ipairs(spyNames) do
-							if string.find(n, s, 1, true) then
-								found = true
-								if removeGui then pcall(function() g:Destroy() end) end
-								break
-							end
-						end
+					if g.Name ~= "RayVinzUI" and isSpy(g.Name) then
+						found = true
+						if removeGui then pcall(function() g:Destroy() end) end
 					end
 				end
 			end
 		end
+		-- 2) hidden / protected GUIs (e.g. Turtle Spy) parented to nil
+		pcall(function()
+			if type(getnilinstances) == "function" then
+				for _, inst in ipairs(getnilinstances()) do
+					local ok, cls = pcall(function() return inst.ClassName end)
+					if ok and cls == "ScreenGui" and isSpy(inst.Name) then
+						found = true
+						if removeGui then pcall(function() inst:Destroy() end) end
+					end
+				end
+			end
+		end)
 		return found
 	end
 	local function detectHooks()

@@ -717,10 +717,27 @@ function RayVinzUI:AntiSpy(o)
 		for _, s in ipairs(spyNames) do if string.find(n, s, 1, true) then return true end end
 		return false
 	end
-	-- name-only match (scanning TEXT false-positives on admin scripts like IY that
-	-- list ";simplespy" / ";remotespy" / ";cobalt" as commands)
+	-- title signatures UNIQUE to spies (verified NOT present in Infinite Yield's command
+	-- list, so these can't false-positive on IY like "simplespy"/"remotespy"/"cobalt" would)
+	local spyTitles = { "octo~spy", "turtle spy", "hydroxide", "utopia spy" }
+	local function hasSpyText(gui)
+		local hit, count = false, 0
+		pcall(function()
+			for _, d in ipairs(gui:GetDescendants()) do
+				count = count + 1
+				if count > 700 then return end -- don't crawl huge core GUIs
+				if d:IsA("TextLabel") or d:IsA("TextButton") then
+					local t = string.lower(d.Text or "")
+					for _, s in ipairs(spyTitles) do if string.find(t, s, 1, true) then hit = true return end end
+				end
+			end
+		end)
+		return hit
+	end
 	local function consider(g, found)
-		if g.Name ~= "RayVinzUI" and isSpyName(g.Name) then
+		if g.Name == "RayVinzUI" then return found end
+		if string.find(string.lower(g.Name), "roblox", 1, true) then return found end -- skip Roblox core GUIs
+		if isSpyName(g.Name) or hasSpyText(g) then
 			if removeGui then pcall(function() g:Destroy() end) end
 			return true
 		end

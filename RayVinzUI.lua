@@ -693,17 +693,26 @@ function RayVinzUI:Loading(o)
 end
 
 -- ================= AntiSpy (protect your own script from remote spies / hooks) =================
--- Detects known remote-spy GUIs and common function hooks, then removes / reports them.
--- o = { Interval = 1, Kick = true (destroy spy GUIs), Callback = function(reasons) end }
+-- Detects known remote-spy GUIs and common function hooks, then (optionally) kicks the player.
+-- o = {
+--   Interval    = 1,          -- seconds between scans
+--   RemoveGui   = true,       -- destroy known spy GUIs when found
+--   Kick        = true,       -- LocalPlayer:Kick(...) when a spy/hook is detected
+--   KickMessage = "...",      -- message shown on the kick screen
+--   Callback    = function(reasons) end, -- called before kicking
+-- }
 function RayVinzUI:AntiSpy(o)
 	o = o or {}
 	local interval = o.Interval or 1
-	local kick = o.Kick ~= false
+	local removeGui = o.RemoveGui ~= false
+	local doKick = o.Kick ~= false
+	local kickMsg = o.KickMessage or "remote spy detected\nไม่ได้แดกกูหรอกควาย"
 	local spyNames = {
 		"simplespy", "hydroxide", "remotespy", "remote-spy", "cobalt",
-		"utopiaspy", "remotelogger", "spygui", "dex", "sirhurt",
+		"utopiaspy", "remotelogger", "spygui", "sirhurt",
 	}
-	local function destroySpyGuis()
+	local function scanSpyGuis()
+		local found = false
 		local spots = {}
 		pcall(function() table.insert(spots, gethui()) end)
 		pcall(function() table.insert(spots, game:GetService("CoreGui")) end)
@@ -714,12 +723,17 @@ function RayVinzUI:AntiSpy(o)
 					if g.Name ~= "RayVinzUI" then
 						local n = string.lower(g.Name)
 						for _, s in ipairs(spyNames) do
-							if string.find(n, s, 1, true) then pcall(function() g:Destroy() end) break end
+							if string.find(n, s, 1, true) then
+								found = true
+								if removeGui then pcall(function() g:Destroy() end) end
+								break
+							end
 						end
 					end
 				end
 			end
 		end
+		return found
 	end
 	local function detectHooks()
 		local reasons = {}
@@ -732,15 +746,20 @@ function RayVinzUI:AntiSpy(o)
 		if ok3 and idx and not iscclosure(idx) then table.insert(reasons, "__index hooked") end
 		return reasons
 	end
+	local function react(reasons)
+		if o.Callback then pcall(o.Callback, reasons) end
+		if doKick then pcall(function() LocalPlayer:Kick(kickMsg) end) end
+	end
 	task.spawn(function()
 		while true do
-			if kick then pcall(destroySpyGuis) end
 			local reasons = detectHooks()
-			if #reasons > 0 and o.Callback then task.spawn(o.Callback, reasons) end
+			local guiFound = scanSpyGuis()
+			if guiFound then table.insert(reasons, "remote spy GUI found") end
+			if #reasons > 0 then react(reasons) if doKick then break end end
 			task.wait(interval)
 		end
 	end)
-	return { Scan = function() pcall(destroySpyGuis); return detectHooks() end }
+	return { Scan = function() local r = detectHooks(); if scanSpyGuis() then table.insert(r, "remote spy GUI found") end return r end }
 end
 
 return setmetatable({}, { __index = RayVinzUI })

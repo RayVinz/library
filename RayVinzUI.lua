@@ -329,13 +329,18 @@ function RayVinzUI:CreateWindow(opts)
 		end))
 	end
 
-	-- intro: play a loading screen, then reveal the window (opts.Loading = true or { Title, SubTitle, Duration })
+	-- intro: loading screen -> reveal window -> (optional) changelog. opts.Changelog = { Version=, Changes={} }
+	local function afterReady()
+		if opts.Changelog then task.wait(0.45); pcall(function() self:Changelog(opts.Changelog) end) end
+		if opts.OnReady then task.spawn(opts.OnReady) end
+	end
 	if opts.Loading then
 		local lo = type(opts.Loading) == "table" and opts.Loading or {}
 		local loader = self:Loading({ Title = lo.Title or opts.Title or "RayVinz Hub", SubTitle = lo.SubTitle or "Loading assets...", Logo = opts.Logo })
-		task.delay(lo.Duration or 2, function() loader.Close() task.wait(0.25) showWin(true) end)
+		task.delay(lo.Duration or 2, function() loader.Close() task.wait(0.25) showWin(true) afterReady() end)
 	else
 		showWin(true)
+		task.defer(afterReady)
 	end
 	return self
 end
@@ -733,6 +738,11 @@ function RayVinzUI:_section(page, opts)
 		grad(b, o.Color or Theme.Accent, o.Color2 or Theme.Accent2, o.Rotation or 35)
 		if o.Image then new("ImageLabel", { BackgroundTransparency = 1, Image = o.Image, Size = UDim2.fromScale(1, 1), ImageTransparency = o.ImageTransparency or 0.15, ScaleType = Enum.ScaleType.Crop }, b) end
 		new("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.45, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, b) -- readability overlay
+		-- big hub logo on the right (not touching the edge)
+		if o.Logo then
+			local ls = o.LogoSize or math.floor((o.Height or 96) * 0.62)
+			iconImage(b, o.Logo, UDim2.fromOffset(ls, ls), Theme.White, UDim2.new(1, -18, 0.5, 0), Vector2.new(1, 0.5)).ZIndex = 4
+		end
 		local t1 = ltext(b, o.Title or "RayVinz Hub", 20, Theme.White, FB); t1.Position = UDim2.new(0, 16, 1, -48); t1.Size = UDim2.new(1, -32, 0, 24); t1.ZIndex = 3
 		local t2 = ltext(b, o.SubTitle or "", 12, Color3.fromRGB(228, 228, 234), FM); t2.Position = UDim2.new(0, 16, 1, -26); t2.Size = UDim2.new(1, -32, 0, 16); t2.ZIndex = 3
 		return r

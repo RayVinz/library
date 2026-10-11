@@ -395,9 +395,10 @@ function RayVinzUI:Tab(opts)
 	pad(page, 18, 18, 18, 18); vlist(page, 16)
 	tab._item, tab._icon, tab._label, tab._page, tab._window = item, ic, lb, page, self
 	function tab:Section(s) return self._window:_section(self._page, s) end
+	function tab:Select() self._window:_select(self) end -- เปิดหน้านี้เอง
 	item.MouseButton1Click:Connect(function() self:_select(tab) end)
 	table.insert(self._tabs, tab)
-	if #self._tabs == 1 then self:_select(tab) end
+	if #self._tabs == 1 or opts.Default then self:_select(tab) end -- tab แรก หรือ Default = true = หน้าแรก
 	return tab
 end
 function RayVinzUI:_select(tab)

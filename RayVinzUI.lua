@@ -318,7 +318,7 @@ function RayVinzUI:CreateWindow(opts)
 	end
 
 	-- auto-load saved config a frame after build (so every element exists first)
-	if opts.ConfigAutoSave then task.defer(function() pcall(function() self:LoadConfig() end) end) end
+	if opts.ConfigAutoSave then task.defer(function() pcall(function() self:LoadConfig(self:GetAutoLoadConfig() or self._configName) end) end) end
 
 	-- auto re-inject: if the GUI is externally un-parented (not destroyed), put it back
 	if opts.Protect then
@@ -405,7 +405,7 @@ end
 
 -- ================= Section + elements =================
 function RayVinzUI:_section(page, opts)
-	opts = opts or {}; local section = { _gui = self.Gui }
+	opts = opts or {}; local section = { _gui = self.Gui, _window = self }
 	local wflags = self._flags or {}
 	local trackConn = self._track or function(c) return c end
 	local win = self
@@ -594,6 +594,8 @@ function RayVinzUI:_section(page, opts)
 			task.delay(0.15, function() if list.GroupTransparency > 0.9 then list.Visible = false end end)
 		end
 		local function openList()
+			-- re-fetch options every open (e.g. eggs that appeared/disappeared in workspace)
+			if o.Refresh then local ok, nw = pcall(o.Refresh); if ok and type(nw) == "table" then options = nw end end
 			reposition(); rebuild()
 			list.GroupTransparency = 1; list.Position = UDim2.fromOffset(tx, ty - 6); list.Visible = true; catcher.Visible = true
 			tween(list, 0.16, { GroupTransparency = 0, Position = UDim2.fromOffset(tx, ty) }) -- fade + slide down
@@ -602,7 +604,19 @@ function RayVinzUI:_section(page, opts)
 		catcher.MouseButton1Click:Connect(closeList)
 		box:GetPropertyChangedSignal("AbsolutePosition"):Connect(function() if list.Visible then reposition() end end)
 		display(); rebuild(); tip(r, o.Tooltip)
-		local ctl = { Set = function(v) selected = v display() rebuild() if o.Callback then task.spawn(o.Callback, selected) end end, Get = function() return selected end }
+		local ctl = {
+			Set = function(v) selected = v display() rebuild() if o.Callback then task.spawn(o.Callback, selected) end end,
+			Get = function() return selected end,
+			-- Refresh(newOptions) or Refresh() to re-pull via o.Refresh — updates the option list live
+			Refresh = function(newOpts)
+				if type(newOpts) == "table" then options = newOpts
+				elseif o.Refresh then local ok, nw = pcall(o.Refresh); if ok and type(nw) == "table" then options = nw end end
+				-- drop selections that no longer exist
+				if multi then local keep = {} for _, s in ipairs(selected) do if indexOf(options, s) then table.insert(keep, s) end end selected = keep
+				elseif selected and not indexOf(options, selected) then selected = nil end
+				display(); rebuild()
+			end,
+		}
 		registerFlag(o.Flag, ctl); return ctl
 	end
 
@@ -843,6 +857,44 @@ function RayVinzUI:_section(page, opts)
 		registerFlag(o.Flag, ctl); return ctl
 	end
 
+	-- ConfigManager: create (named) / select / load / delete / auto-load  (one call builds the whole UI)
+	function section:ConfigManager()
+		local UI = self._window
+		local nameBox = self:Textbox({ Title = "New config name", Placeholder = "my_config" })
+		local dd = self:Dropdown({ Title = "Config", Options = UI:ListConfigs(), Refresh = function() return UI:ListConfigs() end })
+		self:ButtonGroup({ Buttons = {
+			{ Title = "Create", Variant = "Primary", Callback = function()
+				local n = tostring(nameBox.Get() or ""):gsub("%s+", "_")
+				if n ~= "" then UI:SaveConfig(n); dd.Refresh(UI:ListConfigs()); UI:Notify({ Title = "Config created", Content = n, Type = "Success", Icon = "check" })
+				else UI:Notify({ Title = "Enter a name first", Type = "Warning", Icon = "alert-triangle" }) end
+			end },
+			{ Title = "Load", Callback = function()
+				local n = dd.Get(); if n then UI:LoadConfig(n); UI:Notify({ Title = "Loaded", Content = n, Type = "Info", Icon = "download" }) end
+			end },
+			{ Title = "Delete", Callback = function()
+				local n = dd.Get(); if n then UI:DeleteConfig(n); dd.Refresh(UI:ListConfigs()); UI:Notify({ Title = "Deleted", Content = n, Type = "Warning", Icon = "trash-2" }) end
+			end },
+		} })
+		self:Dropdown({ Title = "Auto-load on open", Options = UI:ListConfigs(), Default = UI:GetAutoLoadConfig(), Refresh = function() return UI:ListConfigs() end,
+			Callback = function(n) UI:SetAutoLoadConfig(n); UI:Notify({ Title = "Auto-load set", Content = n, Type = "Success", Icon = "check" }) end })
+		return { Refresh = function() dd.Refresh(UI:ListConfigs()) end }
+	end
+
+	-- HWID: show + copy + reload (no rejoin). o.Callback(id) fires on reload (e.g. re-verify a key)
+	function section:HWID(o)
+		o = o or {}
+		local UI = self._window
+		local function get() local id; pcall(function() if gethwid then id = gethwid() end end); return id or "unavailable" end
+		local r = row(0); pad(r, 11, 14, 10, 14); vlist(r, 5)
+		local t = ltext(r, "HWID", 13, Theme.Text, FB); t.Size = UDim2.new(1, 0, 0, 16)
+		local val = ltext(r, get(), 11, Theme.SubText, FM); val.Size = UDim2.new(1, 0, 0, 14); val.TextTruncate = Enum.TextTruncate.AtEnd
+		self:ButtonGroup({ Buttons = {
+			{ Title = "Copy", Callback = function() pcall(function() if setclipboard then setclipboard(get()) end end); UI:Notify({ Title = "Copied HWID", Type = "Info", Icon = "copy" }) end },
+			{ Title = "Reload HWID", Variant = "Primary", Callback = function() val.Text = get(); if o.Callback then task.spawn(o.Callback, get()) end UI:Notify({ Title = "HWID reloaded", Type = "Success", Icon = "refresh-cw" }) end },
+		} })
+		return { Get = get, Reload = function() val.Text = get() return get() end }
+	end
+
 	return section
 end
 
@@ -1024,6 +1076,37 @@ function RayVinzUI:LoadConfig(name)
 		end
 	end
 	return true
+end
+-- list saved config names (files in the RayVinz folder)
+function RayVinzUI:ListConfigs()
+	local out = {}
+	pcall(function()
+		if type(listfiles) == "function" and isfolder and isfolder("RayVinz") then
+			for _, f in ipairs(listfiles("RayVinz")) do
+				local nm = tostring(f):match("([^/\\]+)%.json$")
+				if nm and nm ~= "_autoload" then table.insert(out, nm) end
+			end
+		end
+	end)
+	return out
+end
+function RayVinzUI:DeleteConfig(name)
+	if not name or name == "" then return false end
+	return (pcall(function() if delfile and isfile and isfile("RayVinz/" .. name .. ".json") then delfile("RayVinz/" .. name .. ".json") end end))
+end
+function RayVinzUI:SetAutoLoadConfig(name)
+	pcall(function()
+		if makefolder and isfolder and not isfolder("RayVinz") then makefolder("RayVinz") end
+		if name and name ~= "" and type(writefile) == "function" then writefile("RayVinz/_autoload.txt", name)
+		elseif delfile and isfile and isfile("RayVinz/_autoload.txt") then delfile("RayVinz/_autoload.txt") end
+	end)
+	return self
+end
+function RayVinzUI:GetAutoLoadConfig()
+	local name
+	pcall(function() if isfile and isfile("RayVinz/_autoload.txt") and readfile then name = readfile("RayVinz/_autoload.txt") end end)
+	if name == "" then name = nil end
+	return name
 end
 
 -- ================= Window control: Toggle / Unload =================

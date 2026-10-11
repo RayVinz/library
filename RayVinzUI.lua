@@ -387,7 +387,9 @@ function RayVinzUI:Tab(opts)
 	local tbar = new("Frame", { Size = UDim2.fromOffset(3, 0), Position = UDim2.new(0, 2, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = Theme.Accent, BorderSizePixel = 0, ZIndex = 2 }, item); corner(tbar, 2)
 	local ic = iconImage(item, opts.Icon, UDim2.fromOffset(16, 16), Theme.SubText, UDim2.new(0, 12, 0.5, 0), Vector2.new(0, 0.5)); ic.ZIndex = 2
 	local lb = ltext(item, opts.Title or "Tab", 13, Theme.SubText, FM); lb.Position = UDim2.new(0, 38, 0, 0); lb.Size = UDim2.new(1, -48, 1, 0); lb.ZIndex = 2
-	tab._bar = tbar
+	local dot = new("Frame", { Name = "Dot", Size = UDim2.fromOffset(7, 7), Position = UDim2.new(1, -10, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), BackgroundColor3 = Theme.Error, BorderSizePixel = 0, Visible = false, ZIndex = 3 }, item); corner(dot, 4)
+	tab._bar = tbar; tab._dot = dot
+	function tab:SetDot(on) self._dot.Visible = on and true or false end
 	local page = new("ScrollingFrame", { Name = "Page", Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false,
 		ScrollBarThickness = 3, ScrollBarImageColor3 = Theme.Muted, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y }, self.Content)
 	pad(page, 18, 18, 18, 18); vlist(page, 16)
@@ -407,6 +409,7 @@ function RayVinzUI:_select(tab)
 		t._label.Font = on and FB or FM
 		t._icon.ImageColor3 = on and Theme.Accent or Theme.SubText
 		if t._bar then tween(t._bar, 0.18, { Size = UDim2.fromOffset(3, on and 18 or 0) }) end
+		if on and t._dot then t._dot.Visible = false end -- clear the dot once opened
 	end
 end
 
@@ -501,6 +504,7 @@ function RayVinzUI:_section(page, opts)
 			if fire ~= false and o.Callback then task.spawn(o.Callback, v) end
 		end
 		sw.MouseButton1Click:Connect(function() set(not state) end)
+		if o.Keybind then trackConn(UserInputService.InputBegan:Connect(function(inp, gpe) if not gpe and inp.KeyCode == o.Keybind then set(not state) end end)) end
 		tip(r, o.Tooltip)
 		local ctl = { Set = function(v) set(v) end, Get = function() return state end }
 		registerFlag(o, ctl); return ctl
@@ -573,13 +577,19 @@ function RayVinzUI:_section(page, opts)
 		local box = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(150, 30), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), BackgroundColor3 = Theme.Field, BackgroundTransparency = 0.4 }, r); corner(box, 9); stroke(box, Theme.White, 0.8, 1)
 		local valTxt = ltext(box, "Select...", 12, Theme.Text, FM); valTxt.Position = UDim2.new(0, 10, 0, 0); valTxt.Size = UDim2.new(1, -28, 1, 0)
 		iconImage(box, "chevron-down", UDim2.fromOffset(12, 12), Theme.SubText, UDim2.new(1, -8, 0.5, 0), Vector2.new(1, 0.5))
+		if o.RefreshButton then
+			local rb = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(20, 20), Position = UDim2.new(1, -24, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), BackgroundTransparency = 1, ZIndex = 2 }, box)
+			iconImage(rb, "refresh-cw", UDim2.fromOffset(13, 13), Theme.SubText, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
+			rb.MouseButton1Click:Connect(function() if doRefresh then doRefresh() end end)
+			valTxt.Size = UDim2.new(1, -46, 1, 0)
+		end
 		-- CanvasGroup so we can fade the whole list on open/close
 		local list = new("CanvasGroup", { Visible = false, BackgroundColor3 = Theme.Elevated, BackgroundTransparency = 0.08, Size = UDim2.fromOffset(160, 0), AutomaticSize = Enum.AutomaticSize.Y, GroupTransparency = 1, ClipsDescendants = true, ZIndex = 50 }, self._gui); corner(list, 11); stroke(list, Theme.White, 0.78, 1); pad(list, 6, 6, 6, 6); vlist(list, 2)
 		-- fullscreen click-catcher: closes the list when you click/drag anywhere else
 		local catcher = new("TextButton", { Name = "DropCatcher", Text = "", AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 49 }, self._gui)
 		local tx, ty = 0, 0
 		local searchQuery = ""
-		local reposition, closeList
+		local reposition, closeList, doRefresh
 		local function display() if multi then valTxt.Text = #selected > 0 and table.concat(selected, ", ") or "None" else valTxt.Text = selected and tostring(selected) or "Select..." end end
 		local function rebuild()
 			for _, c in ipairs(list:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
@@ -622,18 +632,17 @@ function RayVinzUI:_section(page, opts)
 		catcher.MouseButton1Click:Connect(closeList)
 		box:GetPropertyChangedSignal("AbsolutePosition"):Connect(function() if list.Visible then reposition() end end)
 		display(); rebuild(); tip(r, o.Tooltip)
+		doRefresh = function(newOpts)
+			if type(newOpts) == "table" then options = newOpts
+			elseif o.Refresh then local ok, nw = pcall(o.Refresh); if ok and type(nw) == "table" then options = nw end end
+			if multi then local keep = {} for _, s in ipairs(selected) do if indexOf(options, s) then table.insert(keep, s) end end selected = keep
+			elseif selected and not indexOf(options, selected) then selected = nil end
+			display(); rebuild()
+		end
 		local ctl = {
 			Set = function(v) selected = v display() rebuild() if o.Callback then task.spawn(o.Callback, selected) end end,
 			Get = function() return selected end,
-			-- Refresh(newOptions) or Refresh() to re-pull via o.Refresh — updates the option list live
-			Refresh = function(newOpts)
-				if type(newOpts) == "table" then options = newOpts
-				elseif o.Refresh then local ok, nw = pcall(o.Refresh); if ok and type(nw) == "table" then options = nw end end
-				-- drop selections that no longer exist
-				if multi then local keep = {} for _, s in ipairs(selected) do if indexOf(options, s) then table.insert(keep, s) end end selected = keep
-				elseif selected and not indexOf(options, selected) then selected = nil end
-				display(); rebuild()
-			end,
+			Refresh = doRefresh, -- Refresh(newOptions) or Refresh() to re-pull via o.Refresh
 		}
 		registerFlag(o, ctl); return ctl
 	end
@@ -965,6 +974,15 @@ function RayVinzUI:Notify(o)
 	tween(card, 0.28, { GroupTransparency = 0 }) -- fade in
 	local dismissed = false
 	local function dismiss() if dismissed then return end dismissed = true tween(card, 0.22, { GroupTransparency = 1 }) task.wait(0.24) pcall(function() card:Destroy() end) end
+	-- action buttons (e.g. { { Title = "Undo", Callback = fn } }); Close = false keeps the toast open
+	if o.Actions and #o.Actions > 0 then
+		local arow = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26), LayoutOrder = 3 }, col)
+		new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 6), VerticalAlignment = Enum.VerticalAlignment.Center }, arow)
+		for i, a in ipairs(o.Actions) do
+			local ab = new("TextButton", { Text = a.Title or "OK", Font = FB, TextSize = 11, TextColor3 = a.Primary and Theme.AccentText or Theme.Text, AutoButtonColor = false, Size = UDim2.fromOffset(0, 24), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = a.Primary and Theme.Accent or Theme.Select, BackgroundTransparency = a.Primary and 0 or 0.25, LayoutOrder = i }, arow); corner(ab, 7); pad(ab, 0, 12, 0, 12)
+			ab.MouseButton1Click:Connect(function() if a.Callback then task.spawn(a.Callback) end if a.Close ~= false then task.spawn(dismiss) end end)
+		end
+	end
 	closeBtn.MouseButton1Click:Connect(function() task.spawn(dismiss) end)
 	task.delay(o.Duration or 4, dismiss)
 	return card
@@ -985,6 +1003,65 @@ function RayVinzUI:Dialog(o)
 		b.MouseButton1Click:Connect(function() overlay:Destroy() if bd.Callback then task.spawn(bd.Callback) end end)
 	end
 	return overlay
+end
+
+-- input dialog (modal with a textbox). o.Callback(text) on confirm
+function RayVinzUI:Prompt(o)
+	o = o or {}
+	local gui = self.Gui or ActiveGui
+	local overlay = new("Frame", { Name = "Prompt", Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.5, ZIndex = 82 }, gui)
+	local box = new("Frame", { Size = UDim2.fromOffset(360, 0), AutomaticSize = Enum.AutomaticSize.Y, Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = Theme.Elevated, BackgroundTransparency = 0.06, ClipsDescendants = true, ZIndex = 83 }, overlay); corner(box, 18); stroke(box, Theme.White, 0.78, 1); pad(box, 18, 20, 18, 20); vlist(box, 12)
+	local t = ltext(box, o.Title or "Input", 15, Theme.Text, FB); t.Size = UDim2.new(1, 0, 0, 20); t.LayoutOrder = 1
+	if o.Content and o.Content ~= "" then local c = ltext(box, o.Content, 12, Theme.SubText, F); c.LayoutOrder = 2; c.Size = UDim2.new(1, 0, 0, 0); c.AutomaticSize = Enum.AutomaticSize.Y; c.TextWrapped = true; c.TextYAlignment = Enum.TextYAlignment.Top end
+	local field = new("Frame", { Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = Theme.Field, BackgroundTransparency = 0.3, LayoutOrder = 3 }, box); corner(field, 9); stroke(field, Theme.White, 0.8, 1); pad(field, 0, 12, 0, 12)
+	local tb = new("TextBox", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), Text = o.Default or "", PlaceholderText = o.Placeholder or "type here...", PlaceholderColor3 = Theme.Muted, TextColor3 = Theme.Text, Font = FM, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false }, field)
+	local btns = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 36), LayoutOrder = 4 }, box)
+	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Right, Padding = UDim.new(0, 10), VerticalAlignment = Enum.VerticalAlignment.Center }, btns)
+	local cancel = new("TextButton", { Text = o.CancelText or "Cancel", Font = FB, TextSize = 13, TextColor3 = Theme.Text, AutoButtonColor = false, Size = UDim2.fromOffset(0, 36), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = Theme.Select, LayoutOrder = 1 }, btns); corner(cancel, 9); pad(cancel, 0, 18, 0, 18)
+	local confirm = new("TextButton", { Text = o.ConfirmText or "Confirm", Font = FB, TextSize = 13, TextColor3 = Theme.AccentText, AutoButtonColor = false, Size = UDim2.fromOffset(0, 36), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = Theme.Accent, LayoutOrder = 2 }, btns); corner(confirm, 9); pad(confirm, 0, 18, 0, 18); grad(confirm, Theme.Accent, Theme.Accent2, 25)
+	local function done(v) overlay:Destroy() if v ~= nil and o.Callback then task.spawn(o.Callback, v) elseif v == nil and o.OnCancel then task.spawn(o.OnCancel) end end
+	cancel.MouseButton1Click:Connect(function() done(nil) end)
+	confirm.MouseButton1Click:Connect(function() done(tb.Text) end)
+	tb.FocusLost:Connect(function(enter) if enter then done(tb.Text) end end)
+	task.defer(function() pcall(function() tb:CaptureFocus() end) end)
+	return overlay
+end
+
+-- floating watermark (draggable glass pill, auto FPS/ping/time). returns { Set, SetVisible, Destroy }
+function RayVinzUI:Watermark(o)
+	o = o or {}
+	local gui = self.Gui or ActiveGui
+	local wm = new("CanvasGroup", { Name = "Watermark", Size = UDim2.fromOffset(0, 30), AutomaticSize = Enum.AutomaticSize.X, Position = o.Position or UDim2.new(0, 16, 0, 16), BackgroundColor3 = Color3.fromRGB(26, 26, 30), BackgroundTransparency = 0.18, ZIndex = 85 }, gui); corner(wm, 9); stroke(wm, Theme.White, 0.58, 1.2); glassSheen(wm, 9, 0); pad(wm, 0, 13, 0, 13)
+	local lbl = ltext(wm, o.Text or "RayVinz Hub", 12, Theme.Text, FB); lbl.Size = UDim2.new(0, 0, 1, 0); lbl.AutomaticSize = Enum.AutomaticSize.X; lbl.ZIndex = 2
+	draggable(wm, wm)
+	local track = self._track or function(c) return c end
+	if o.Auto ~= false then
+		local acc, frames, fps = 0, 0, 0
+		track(game:GetService("RunService").Heartbeat:Connect(function(dt)
+			frames = frames + 1; acc = acc + dt
+			if acc >= 1 then
+				fps = math.floor(frames / acc + 0.5); frames = 0; acc = 0
+				local ping = "--"; pcall(function() ping = math.floor(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()) .. "ms" end)
+				lbl.Text = (o.Text or "RayVinz Hub") .. "  |  " .. fps .. " fps  |  " .. ping .. "  |  " .. os.date("%H:%M:%S")
+			end
+		end))
+	end
+	return { Set = function(t) lbl.Text = t end, SetVisible = function(v) wm.Visible = v and true or false end, Destroy = function() pcall(function() wm:Destroy() end) end }
+end
+
+-- update checker: fetch a remote version string and compare. o = { VersionUrl, Current, OnUpdate }
+function RayVinzUI:CheckUpdate(o)
+	o = o or {}
+	task.spawn(function()
+		local ok, remote = pcall(function() return game:HttpGet(o.VersionUrl) end)
+		if not ok or not remote then return end
+		remote = tostring(remote):gsub("%s+", "")
+		if o.Current and remote ~= "" and remote ~= tostring(o.Current) then
+			if o.OnUpdate then task.spawn(o.OnUpdate, remote)
+			else self:Notify({ Title = "Update available", Content = "New version: " .. remote, Type = "Warning", Icon = "download", Duration = 8 }) end
+		end
+	end)
+	return self
 end
 
 function RayVinzUI:Loading(o)
@@ -1041,6 +1118,31 @@ function RayVinzUI:SetAccent(color, color2)
 				if kps and #kps >= 2 and eq(kps[1].Value, old) then d.Color = ColorSequence.new(Theme.Accent, Theme.Accent2) end
 			end
 		end)
+	end
+	return self
+end
+-- full theme presets + live theme swap (not just accent)
+RayVinzUI.ThemePresets = {
+	Dark     = { Background = Color3.fromRGB(28, 28, 30), Sidebar = Color3.fromRGB(36, 36, 39), Card = Color3.fromRGB(44, 44, 46), Elevated = Color3.fromRGB(50, 50, 53), Select = Color3.fromRGB(60, 60, 63), Field = Color3.fromRGB(58, 58, 60), Text = Color3.fromRGB(245, 245, 247), SubText = Color3.fromRGB(152, 152, 157) },
+	Midnight = { Background = Color3.fromRGB(16, 18, 27), Sidebar = Color3.fromRGB(22, 25, 37), Card = Color3.fromRGB(28, 32, 46), Elevated = Color3.fromRGB(34, 39, 56), Select = Color3.fromRGB(44, 50, 70), Field = Color3.fromRGB(40, 45, 64), Text = Color3.fromRGB(235, 238, 250), SubText = Color3.fromRGB(140, 148, 170) },
+	Light    = { Background = Color3.fromRGB(242, 242, 245), Sidebar = Color3.fromRGB(232, 232, 237), Card = Color3.fromRGB(252, 252, 255), Elevated = Color3.fromRGB(246, 246, 250), Select = Color3.fromRGB(224, 224, 230), Field = Color3.fromRGB(236, 236, 241), Text = Color3.fromRGB(28, 28, 32), SubText = Color3.fromRGB(110, 110, 120) },
+}
+function RayVinzUI:SetTheme(t)
+	if type(t) == "string" then t = RayVinzUI.ThemePresets[t] end
+	if type(t) ~= "table" then return self end
+	local remap = {} -- { oldColor, newColor }
+	for _, k in ipairs({ "Background", "Sidebar", "Card", "Elevated", "Select", "Field", "Text", "SubText", "Muted" }) do
+		if t[k] then table.insert(remap, { Theme[k], t[k] }); Theme[k] = t[k] end
+	end
+	local gui = self.Gui or ActiveGui
+	if not gui then return self end
+	local function eq(a, b) return a and b and math.abs(a.R - b.R) < 0.02 and math.abs(a.G - b.G) < 0.02 and math.abs(a.B - b.B) < 0.02 end
+	for _, d in ipairs(gui:GetDescendants()) do
+		for _, p in ipairs(remap) do
+			pcall(function() if eq(d.BackgroundColor3, p[1]) then d.BackgroundColor3 = p[2] end end)
+			pcall(function() if eq(d.TextColor3, p[1]) then d.TextColor3 = p[2] end end)
+			pcall(function() if (d.ClassName == "ImageLabel" or d.ClassName == "ImageButton") and eq(d.ImageColor3, p[1]) then d.ImageColor3 = p[2] end end)
+		end
 	end
 	return self
 end

@@ -880,6 +880,13 @@ function RayVinzUI:_section(page, opts)
 				if n ~= "" then UI:SaveConfig(n); dd.Refresh(UI:ListConfigs()); UI:Notify({ Title = "Config created", Content = n, Type = "Success", Icon = "check" })
 				else UI:Notify({ Title = "Enter a name first", Type = "Warning", Icon = "alert-triangle" }) end
 			end },
+			{ Title = "Save", Callback = function() -- overwrite the selected config
+				local n = dd.Get()
+				if n then UI:SaveConfig(n); UI:Notify({ Title = "Saved (overwrite)", Content = n, Type = "Success", Icon = "save" })
+				else UI:Notify({ Title = "Select a config first", Type = "Warning", Icon = "alert-triangle" }) end
+			end },
+		} })
+		self:ButtonGroup({ Buttons = {
 			{ Title = "Load", Callback = function()
 				local n = dd.Get(); if n then UI:LoadConfig(n); UI:Notify({ Title = "Loaded", Content = n, Type = "Info", Icon = "download" }) end
 			end },

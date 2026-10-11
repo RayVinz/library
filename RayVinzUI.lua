@@ -1031,7 +1031,8 @@ end
 function RayVinzUI:Watermark(o)
 	o = o or {}
 	local gui = self.Gui or ActiveGui
-	local wm = new("CanvasGroup", { Name = "Watermark", Size = UDim2.fromOffset(0, 30), AutomaticSize = Enum.AutomaticSize.X, Position = o.Position or UDim2.new(0, 16, 0, 16), BackgroundColor3 = Color3.fromRGB(26, 26, 30), BackgroundTransparency = 0.18, ZIndex = 85 }, gui); corner(wm, 9); stroke(wm, Theme.White, 0.58, 1.2); glassSheen(wm, 9, 0); pad(wm, 0, 13, 0, 13)
+	-- default below the Roblox topbar + performance-stats bar (y=120); override with o.Position
+	local wm = new("CanvasGroup", { Name = "Watermark", Size = UDim2.fromOffset(0, 30), AutomaticSize = Enum.AutomaticSize.X, Position = o.Position or UDim2.new(0, 16, 0, 120), BackgroundColor3 = Color3.fromRGB(26, 26, 30), BackgroundTransparency = 0.18, ZIndex = 85 }, gui); corner(wm, 9); stroke(wm, Theme.White, 0.58, 1.2); glassSheen(wm, 9, 0); pad(wm, 0, 13, 0, 13)
 	local lbl = ltext(wm, o.Text or "RayVinz Hub", 12, Theme.Text, FB); lbl.Size = UDim2.new(0, 0, 1, 0); lbl.AutomaticSize = Enum.AutomaticSize.X; lbl.ZIndex = 2
 	draggable(wm, wm)
 	local track = self._track or function(c) return c end

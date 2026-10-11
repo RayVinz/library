@@ -183,6 +183,7 @@ function RayVinzUI:CreateWindow(opts)
 	self._track = function(c) table.insert(self._conns, c); return c end
 	self._configName = opts.ConfigName or "default"; ActiveFlags = self._flags
 	self._autoSave = opts.ConfigAutoSave and true or false
+	self._autoFlag = opts.AutoFlag ~= false -- auto-generate a Flag for every element (so config saves everything)
 	do
 		local pending = false
 		self._queueSave = function()
@@ -409,10 +410,21 @@ function RayVinzUI:_section(page, opts)
 	local wflags = self._flags or {}
 	local trackConn = self._track or function(c) return c end
 	local win = self
-	local function registerFlag(flag, ctl, kind) if flag then wflags[flag] = { ctl = ctl, kind = kind } end end
-	-- wrap a flagged element's callback so a change also triggers auto-save (if enabled)
+	local autoN = 0
+	-- register an element for Config. Uses o.Flag, or auto-generates "Section/Title" so
+	-- EVERY element is saved by default (set opts.AutoFlag = false to require explicit Flags).
+	local function registerFlag(o, ctl, kind)
+		autoN = autoN + 1
+		local flag = o.Flag
+		if not flag and win._autoFlag then
+			flag = (opts.Title or "Section") .. "/" .. (o.Title or ("item" .. autoN))
+			if wflags[flag] then flag = flag .. "#" .. autoN end
+		end
+		if flag then wflags[flag] = { ctl = ctl, kind = kind } end
+	end
+	-- wrap an element's callback so a change also triggers auto-save (if enabled)
 	local function autoCb(o)
-		if not o.Flag or not win._queueSave then return end
+		if not win._queueSave then return end
 		local cb = o.Callback
 		o.Callback = function(...) if cb then cb(...) end win._queueSave() end
 	end
@@ -485,7 +497,7 @@ function RayVinzUI:_section(page, opts)
 		sw.MouseButton1Click:Connect(function() set(not state) end)
 		tip(r, o.Tooltip)
 		local ctl = { Set = function(v) set(v) end, Get = function() return state end }
-		registerFlag(o.Flag, ctl); return ctl
+		registerFlag(o, ctl); return ctl
 	end
 
 	-- Button
@@ -545,7 +557,7 @@ function RayVinzUI:_section(page, opts)
 		set(val, false)
 		tip(r, o.Tooltip)
 		local ctl = { Set = function(v) set(v) end, Get = function() return val end }
-		registerFlag(o.Flag, ctl); return ctl
+		registerFlag(o, ctl); return ctl
 	end
 
 	-- Dropdown
@@ -617,7 +629,7 @@ function RayVinzUI:_section(page, opts)
 				display(); rebuild()
 			end,
 		}
-		registerFlag(o.Flag, ctl); return ctl
+		registerFlag(o, ctl); return ctl
 	end
 
 	-- Textbox
@@ -628,7 +640,7 @@ function RayVinzUI:_section(page, opts)
 		local tb = new("TextBox", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), Text = o.Default or "", PlaceholderText = o.Placeholder or "...", PlaceholderColor3 = Theme.Muted, TextColor3 = Theme.Text, Font = FM, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false }, holder)
 		tb.FocusLost:Connect(function() if o.Callback then task.spawn(o.Callback, tb.Text) end end)
 		local ctl = { Set = function(v) tb.Text = v end, Get = function() return tb.Text end }
-		registerFlag(o.Flag, ctl); return ctl
+		registerFlag(o, ctl); return ctl
 	end
 
 	-- Textarea (multi-line input: label on top, big box below)
@@ -640,7 +652,7 @@ function RayVinzUI:_section(page, opts)
 		local tb = new("TextBox", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), Text = o.Default or "", PlaceholderText = o.Placeholder or "Enter Text...", PlaceholderColor3 = Theme.Muted, TextColor3 = Theme.Text, Font = FM, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, MultiLine = true, TextWrapped = true, ClearTextOnFocus = false }, holder)
 		tb.FocusLost:Connect(function() if o.Callback then task.spawn(o.Callback, tb.Text) end end)
 		local ctl = { Set = function(v) tb.Text = v end, Get = function() return tb.Text end }
-		registerFlag(o.Flag, ctl); return ctl
+		registerFlag(o, ctl); return ctl
 	end
 
 	-- Keybind
@@ -655,7 +667,7 @@ function RayVinzUI:_section(page, opts)
 			elseif not gpe and key and input.KeyCode == key then if o.Callback then task.spawn(o.Callback) end end
 		end)
 		local ctl = { Set = function(k) key = k; btn.Text = k and k.Name or "None" end, Get = function() return key end }
-		registerFlag(o.Flag, ctl, "keybind"); return ctl
+		registerFlag(o, ctl, "keybind"); return ctl
 	end
 
 	-- ColorPicker
@@ -683,7 +695,7 @@ function RayVinzUI:_section(page, opts)
 		sw.MouseButton1Click:Connect(function() pop.Position = UDim2.fromOffset(sw.AbsolutePosition.X - 160, sw.AbsolutePosition.Y + 30) pop.Visible = not pop.Visible end)
 		refresh(false)
 		local ctl = { Set = function(c) h, s, v = c:ToHSV() refresh() end, Get = function() return color end }
-		registerFlag(o.Flag, ctl, "color"); return ctl
+		registerFlag(o, ctl, "color"); return ctl
 	end
 
 	-- Label
@@ -854,7 +866,7 @@ function RayVinzUI:_section(page, opts)
 		minus.MouseButton1Click:Connect(function() set(val - step) end)
 		plus.MouseButton1Click:Connect(function() set(val + step) end)
 		local ctl = { Set = function(v) set(v) end, Get = function() return val end }
-		registerFlag(o.Flag, ctl); return ctl
+		registerFlag(o, ctl); return ctl
 	end
 
 	-- ConfigManager: create (named) / select / load / delete / auto-load  (one call builds the whole UI)
@@ -1018,7 +1030,7 @@ end
 function RayVinzUI:RainbowAccent(enable, speed)
 	if self._rainbow then pcall(function() self._rainbow:Disconnect() end); self._rainbow = nil end
 	if enable == false then return self end
-	speed = speed or 0.06
+	speed = speed or 0.012 -- hue step per 0.1s (~8s per full cycle); pass a bigger number for faster
 	local hue, acc = 0, 0
 	local track = self._track or function(c) return c end
 	self._rainbow = track(game:GetService("RunService").Heartbeat:Connect(function(dt)

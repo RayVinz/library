@@ -184,12 +184,13 @@ function RayVinzUI:CreateWindow(opts)
 	self._configName = opts.ConfigName or "default"; ActiveFlags = self._flags
 	self._autoSave = opts.ConfigAutoSave and true or false
 	self._autoFlag = opts.AutoFlag ~= false -- auto-generate a Flag for every element (so config saves everything)
+	self._loading = self._autoSave -- block auto-save until the first auto-load finishes
 	do
 		local pending = false
 		self._queueSave = function()
-			if pending or not self._autoSave then return end
+			if pending or not self._autoSave or self._loading then return end
 			pending = true
-			task.delay(0.6, function() pending = false; pcall(function() self:SaveConfig() end) end)
+			task.delay(0.6, function() pending = false; if not self._loading then pcall(function() self:SaveConfig() end) end end)
 		end
 	end
 	cleanupOld() -- destroy any previous RayVinzUI so re-running never stacks windows/buttons
@@ -1062,7 +1063,7 @@ end
 -- ================= Config (save / load element values by Flag) =================
 -- Give elements a Flag = "unique_name", then UI:SaveConfig() / UI:LoadConfig()
 function RayVinzUI:SaveConfig(name)
-	name = name or self._configName or "default"
+	name = name or self:GetAutoLoadConfig() or self._configName or "default" -- auto-save writes to the auto-load config
 	if type(writefile) ~= "function" then return false, "executor has no writefile" end
 	local data = {}
 	for flag, e in pairs(self._flags or ActiveFlags or {}) do
@@ -1080,7 +1081,9 @@ function RayVinzUI:SaveConfig(name)
 	return ok
 end
 function RayVinzUI:LoadConfig(name)
-	name = name or self._configName or "default"
+	name = name or self:GetAutoLoadConfig() or self._configName or "default"
+	self._loading = true -- suppress auto-save while applying values (so it can't overwrite with defaults)
+	task.delay(0.8, function() self._loading = false end)
 	if type(readfile) ~= "function" or type(isfile) ~= "function" then return false end
 	local path = "RayVinz/" .. name .. ".json"
 	if not isfile(path) then return false end

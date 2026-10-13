@@ -509,6 +509,9 @@ function RayVinzUI:CreateWindow(opts)
 
 	self:_mountMobile(opts.Logo)
 
+	if opts.AntiAFK then self:AntiAFK(true) end
+	if opts.ReExecute then self:ReExecuteOnTeleport(opts.ReExecute) end
+
 	-- hotkey to toggle the window (animated, with blur) — opts.ToggleKey = Enum.KeyCode.RightShift
 	if opts.ToggleKey then
 		self._track(UserInputService.InputBegan:Connect(function(inp, gpe)
@@ -517,7 +520,11 @@ function RayVinzUI:CreateWindow(opts)
 	end
 
 	-- auto-load saved config a frame after build (so every element exists first)
-	if opts.ConfigAutoSave then task.defer(function() pcall(function() self:LoadConfig(self:GetAutoLoadConfig() or self._configName) end) end) end
+	-- load on start only when the user picked an auto-load config; auto-save still runs either way
+	if opts.ConfigAutoSave then task.defer(function()
+		local auto = self:GetAutoLoadConfig()
+		if auto then pcall(function() self:LoadConfig(auto) end) else self._loading = false end
+	end) end
 
 	-- auto re-inject: if the GUI is externally un-parented (not destroyed), put it back
 	if opts.Protect then
@@ -1555,6 +1562,34 @@ function RayVinzUI:Unload()
 	pcall(function()
 		for _, e in ipairs(game:GetService("Lighting"):GetChildren()) do if e.Name == "RayVinzBlur" then e:Destroy() end end
 	end)
+end
+
+-- ================= Anti-AFK / reopen after teleport =================
+-- UI:AntiAFK(true) stops the 20-minute idle kick; UI:AntiAFK(false) turns it off
+function RayVinzUI:AntiAFK(enable)
+	if self._antiAfk then pcall(function() self._antiAfk:Disconnect() end); self._antiAfk = nil end
+	if enable == false then return self end
+	local vu = game:GetService("VirtualUser")
+	local track = self._track or function(c) return c end
+	self._antiAfk = track(LocalPlayer.Idled:Connect(function()
+		pcall(function() vu:CaptureController(); vu:ClickButton2(Vector2.new()) end)
+	end))
+	return self
+end
+-- Runs `code` again in the next server after a teleport / in-game rejoin (needs queue_on_teleport).
+-- A full leave + join from the website starts a new client, which only an autoexec folder covers.
+function RayVinzUI:ReExecuteOnTeleport(code)
+	local queue = queue_on_teleport or queueonteleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
+	if type(code) ~= "string" or code == "" or not queue then return false end
+	local queued = false
+	local track = self._track or function(c) return c end
+	track(LocalPlayer.OnTeleport:Connect(function(state)
+		if state == Enum.TeleportState.Started and not queued then
+			queued = true
+			pcall(queue, code)
+		end
+	end))
+	return true
 end
 
 -- ================= Key System =================

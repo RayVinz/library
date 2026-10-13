@@ -335,7 +335,11 @@ function RayVinzUI:CreateWindow(opts)
 	for i, c in ipairs({ Color3.fromRGB(255, 95, 87), Color3.fromRGB(254, 188, 46), Color3.fromRGB(40, 200, 64) }) do
 		local d = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(13, 13), BackgroundColor3 = c, LayoutOrder = i }, lights); corner(d, 7)
 		local m = iconImage(d, glyphs[i], UDim2.fromOffset(9, 9), Color3.fromRGB(60, 30, 10), UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5)); m.ImageTransparency = 1; marks[i] = m
-		if i == 1 then d.MouseButton1Click:Connect(function() hideWin() end) end
+		-- red = destroy (confirm first, then fully unload); yellow = hide/minimize; green = maximize
+		if i == 1 then d.MouseButton1Click:Connect(function()
+			self:Dialog({ Title = "Close " .. (opts.Title or "UI") .. "?", Content = "This will fully close and unload the UI. You'll need to re-execute the script to open it again.",
+				Buttons = { { Title = "Cancel" }, { Title = "Close", Variant = "Primary", Callback = function() self:Unload() end } } })
+		end) end
 		if i == 2 then d.MouseButton1Click:Connect(function() hideWin() end) end
 		if i == 3 then d.MouseButton1Click:Connect(function() maximize() end) end
 	end
@@ -374,17 +378,20 @@ function RayVinzUI:CreateWindow(opts)
 	if opts.Resizable ~= false then
 		local minW, minH = (opts.MinSize and opts.MinSize[1]) or 480, (opts.MinSize and opts.MinSize[2]) or 340
 		local maxW, maxH = (opts.MaxSize and opts.MaxSize[1]) or 1200, (opts.MaxSize and opts.MaxSize[2]) or 860
-		-- parented to holder (not win) so the window's rounded-corner clip never crops it
-		local grip = new("TextButton", { Name = "ResizeHandle", Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(24, 24),
-			Position = UDim2.new(1, -2, 1, -2), AnchorPoint = Vector2.new(1, 1), BackgroundTransparency = 1, ZIndex = 5 }, holder)
+		-- parented to win with a high ZIndex + inset clear of the 16px rounded corner (and clear
+		-- of sidebar/content which are also children of win), and given a visible chip background
+		-- so it reads clearly instead of relying on 3 thin lines alone.
+		local grip = new("TextButton", { Name = "ResizeHandle", Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(20, 20),
+			Position = UDim2.new(1, -8, 1, -8), AnchorPoint = Vector2.new(1, 1), BackgroundColor3 = Theme.Field, BackgroundTransparency = 0.35, ZIndex = 10 }, win)
+		corner(grip, 6); stroke(grip, Theme.White, 0.8, 1)
 		local gripLines = {}
 		for i = 1, 3 do
-			local ln = new("Frame", { Size = UDim2.fromOffset(9 - (i - 1) * 2, 2), Position = UDim2.new(1, -5 - (i - 1) * 5, 1, -5 - (i - 1) * 5),
-				AnchorPoint = Vector2.new(1, 1), Rotation = -45, BackgroundColor3 = Theme.Muted, BackgroundTransparency = 0.3, BorderSizePixel = 0 }, grip)
+			local ln = new("Frame", { Size = UDim2.fromOffset(8 - (i - 1) * 2, 2), Position = UDim2.new(1, -4 - (i - 1) * 4, 1, -4 - (i - 1) * 4),
+				AnchorPoint = Vector2.new(1, 1), Rotation = -45, BackgroundColor3 = Theme.SubText, BackgroundTransparency = 0, BorderSizePixel = 0, ZIndex = 11 }, grip)
 			corner(ln, 1); table.insert(gripLines, ln)
 		end
-		grip.MouseEnter:Connect(function() for _, ln in ipairs(gripLines) do tween(ln, 0.12, { BackgroundColor3 = Theme.Accent, BackgroundTransparency = 0 }) end end)
-		grip.MouseLeave:Connect(function() for _, ln in ipairs(gripLines) do tween(ln, 0.12, { BackgroundColor3 = Theme.Muted, BackgroundTransparency = 0.3 }) end end)
+		grip.MouseEnter:Connect(function() tween(grip, 0.12, { BackgroundTransparency = 0.1 }); for _, ln in ipairs(gripLines) do tween(ln, 0.12, { BackgroundColor3 = Theme.Accent }) end end)
+		grip.MouseLeave:Connect(function() tween(grip, 0.12, { BackgroundTransparency = 0.35 }); for _, ln in ipairs(gripLines) do tween(ln, 0.12, { BackgroundColor3 = Theme.SubText }) end end)
 		local resizing, startInput, startSize, startAbsPos
 		grip.InputBegan:Connect(function(inp)
 			if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then

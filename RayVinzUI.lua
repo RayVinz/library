@@ -258,15 +258,6 @@ function RayVinzUI:CreateWindow(opts)
 	self.Window = holder
 	local sh = shadow(holder, 1, 48)
 	-- CanvasGroup lets us fade the whole window (GroupTransparency) in one tween
-	-- ambient glow blobs: soft colored light bleeding through the frosted glass (liquid-glass look)
-	local function ambientBlob(parent, color, size, pos, tr)
-		return new("ImageLabel", {
-			Image = "rbxassetid://5028857084", ImageColor3 = color, ImageTransparency = tr or 0.65,
-			BackgroundTransparency = 1, Size = size, Position = pos, AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = 0,
-		}, parent)
-	end
-	ambientBlob(holder, Theme.Accent, UDim2.fromOffset(260, 260), UDim2.new(0, 20, 0, 20), 0.72)
-	ambientBlob(holder, Theme.Accent2, UDim2.fromOffset(220, 220), UDim2.new(1, -20, 1, -20), 0.75)
 	local win = new("CanvasGroup", { Name = "Main", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Background, BackgroundTransparency = 0.24, GroupTransparency = 1, ClipsDescendants = true, ZIndex = 1 }, holder)
 	corner(win, 16); stroke(win, Theme.White, 0.72, 1.4); glassSheen(win, 16, 1)
 	-- animated shimmering edge: a slowly-rotating accent gradient along the window border
@@ -378,17 +369,18 @@ function RayVinzUI:CreateWindow(opts)
 	if opts.Resizable ~= false then
 		local minW, minH = (opts.MinSize and opts.MinSize[1]) or 480, (opts.MinSize and opts.MinSize[2]) or 340
 		local maxW, maxH = (opts.MaxSize and opts.MaxSize[1]) or 1200, (opts.MaxSize and opts.MaxSize[2]) or 860
-		-- corner bracket: two straight rounded bars forming an L-hook at the corner. No clipping
-		-- trick (that was fragile across two rounds) -- just two plain opaque bars, so it can't
-		-- silently fail to render. Parented to holder, clear of win's rounded-corner clip.
-		local grip = new("TextButton", { Name = "ResizeHandle", Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(34, 34),
-			Position = UDim2.new(1, 0, 1, 0), AnchorPoint = Vector2.new(1, 1), BackgroundTransparency = 1, ZIndex = 10 }, holder)
-		local barH = new("Frame", { Size = UDim2.fromOffset(22, 3), Position = UDim2.new(1, -8, 1, -8), AnchorPoint = Vector2.new(1, 1), BackgroundColor3 = Theme.SubText, BackgroundTransparency = 0.1, BorderSizePixel = 0 }, grip)
-		corner(barH, 2)
-		local barV = new("Frame", { Size = UDim2.fromOffset(3, 22), Position = UDim2.new(1, -8, 1, -8), AnchorPoint = Vector2.new(1, 1), BackgroundColor3 = Theme.SubText, BackgroundTransparency = 0.1, BorderSizePixel = 0 }, grip)
-		corner(barV, 2)
-		grip.MouseEnter:Connect(function() tween(barH, 0.12, { BackgroundColor3 = Theme.Accent, BackgroundTransparency = 0 }); tween(barV, 0.12, { BackgroundColor3 = Theme.Accent, BackgroundTransparency = 0 }) end)
-		grip.MouseLeave:Connect(function() tween(barH, 0.12, { BackgroundColor3 = Theme.SubText, BackgroundTransparency = 0.1 }); tween(barV, 0.12, { BackgroundColor3 = Theme.SubText, BackgroundTransparency = 0.1 }) end)
+		-- iPad-style handle: a short thick arc just outside the window's rounded corner, sharing
+		-- its center. A CanvasGroup does the clipping because ClipsDescendants doesn't clip
+		-- UIStroke (the whole circle showed through before).
+		local grip = new("TextButton", { Name = "ResizeHandle", Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(36, 36),
+			Position = UDim2.new(1, 8, 1, 8), AnchorPoint = Vector2.new(1, 1), BackgroundTransparency = 1, ZIndex = 10 }, holder)
+		local arcView = new("CanvasGroup", { Name = "ResizeArc", Size = UDim2.fromOffset(22, 22), Position = UDim2.new(1, -10, 1, -10),
+			BackgroundTransparency = 1, ZIndex = 9 }, holder)
+		local ring = new("Frame", { Size = UDim2.fromOffset(42, 42), Position = UDim2.fromOffset(-6, -6), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1 }, arcView)
+		new("UICorner", { CornerRadius = UDim.new(0.5, 0) }, ring)
+		local arcStroke = new("UIStroke", { Color = Color3.fromRGB(235, 235, 245), Transparency = 0.15, Thickness = 4.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, ring)
+		grip.MouseEnter:Connect(function() tween(arcStroke, 0.15, { Color = Theme.Accent, Transparency = 0 }) end)
+		grip.MouseLeave:Connect(function() tween(arcStroke, 0.15, { Color = Color3.fromRGB(235, 235, 245), Transparency = 0.15 }) end)
 		local resizing, startInput, startSize, startAbsPos
 		grip.InputBegan:Connect(function(inp)
 			if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then

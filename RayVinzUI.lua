@@ -369,6 +369,44 @@ function RayVinzUI:CreateWindow(opts)
 	draggable(title, holder)
 	new("Frame", { Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 0, 48), BackgroundColor3 = Theme.White, BackgroundTransparency = 0.92, BorderSizePixel = 0 }, win)
 
+	-- resize grip (bottom-right corner, iPadOS floating-window style): drag to resize,
+	-- top-left corner stays put. opts.Resizable = false to disable, opts.MinSize/MaxSize = {w, h}
+	if opts.Resizable ~= false then
+		local minW, minH = (opts.MinSize and opts.MinSize[1]) or 480, (opts.MinSize and opts.MinSize[2]) or 340
+		local maxW, maxH = (opts.MaxSize and opts.MaxSize[1]) or 1200, (opts.MaxSize and opts.MaxSize[2]) or 860
+		local grip = new("TextButton", { Name = "ResizeHandle", Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(24, 24),
+			Position = UDim2.new(1, -2, 1, -2), AnchorPoint = Vector2.new(1, 1), BackgroundTransparency = 1, ZIndex = 50 }, win)
+		local gripLines = {}
+		for i = 1, 3 do
+			local ln = new("Frame", { Size = UDim2.fromOffset(9 - (i - 1) * 2, 2), Position = UDim2.new(1, -5 - (i - 1) * 5, 1, -5 - (i - 1) * 5),
+				AnchorPoint = Vector2.new(1, 1), Rotation = -45, BackgroundColor3 = Theme.Muted, BackgroundTransparency = 0.3, BorderSizePixel = 0 }, grip)
+			corner(ln, 1); table.insert(gripLines, ln)
+		end
+		grip.MouseEnter:Connect(function() for _, ln in ipairs(gripLines) do tween(ln, 0.12, { BackgroundColor3 = Theme.Accent, BackgroundTransparency = 0 }) end end)
+		grip.MouseLeave:Connect(function() for _, ln in ipairs(gripLines) do tween(ln, 0.12, { BackgroundColor3 = Theme.Muted, BackgroundTransparency = 0.3 }) end end)
+		local resizing, startInput, startSize, startAbsPos
+		grip.InputBegan:Connect(function(inp)
+			if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+				resizing = true; startInput = inp.Position; startSize = holder.AbsoluteSize; startAbsPos = holder.AbsolutePosition
+			end
+		end)
+		self._track(UserInputService.InputChanged:Connect(function(inp)
+			if resizing and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
+				local d = inp.Position - startInput
+				local newW = clamp(startSize.X + d.X, minW, maxW)
+				local newH = clamp(startSize.Y + d.Y, minH, maxH)
+				holder.Size = UDim2.fromOffset(newW, newH)
+				holder.Position = UDim2.fromOffset(startAbsPos.X + newW / 2, startAbsPos.Y + newH / 2)
+			end
+		end))
+		self._track(UserInputService.InputEnded:Connect(function(inp)
+			if resizing and (inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch) then
+				resizing = false
+				self._queueSave()
+			end
+		end))
+	end
+
 	-- body: sidebar + content (glassy translucent sidebar)
 	local sidebar = new("ScrollingFrame", { Name = "Sidebar", Size = UDim2.new(0, 190, 1, -49), Position = UDim2.new(0, 0, 0, 49), BackgroundColor3 = Theme.Sidebar, BackgroundTransparency = 0.25,
 		BorderSizePixel = 0, ScrollBarThickness = 0, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y }, win)

@@ -10,12 +10,12 @@ local LocalPlayer      = Players.LocalPlayer
 
 -- ================= Theme =================
 local Theme = {
-	Background = Color3.fromRGB(28, 28, 30),
-	Sidebar    = Color3.fromRGB(36, 36, 39),
-	Card       = Color3.fromRGB(44, 44, 46),
-	Elevated   = Color3.fromRGB(50, 50, 53),
-	Select     = Color3.fromRGB(60, 60, 63),
-	Field      = Color3.fromRGB(58, 58, 60),
+	Background = Color3.fromRGB(20, 20, 28),
+	Sidebar    = Color3.fromRGB(26, 26, 36),
+	Card       = Color3.fromRGB(32, 32, 44),
+	Elevated   = Color3.fromRGB(38, 38, 52),
+	Select     = Color3.fromRGB(46, 46, 62),
+	Field      = Color3.fromRGB(44, 44, 58),
 	Text       = Color3.fromRGB(245, 245, 247),
 	SubText    = Color3.fromRGB(152, 152, 157),
 	Muted      = Color3.fromRGB(118, 118, 124),
@@ -207,8 +207,31 @@ function RayVinzUI:CreateWindow(opts)
 	self.Window = holder
 	local sh = shadow(holder, 1, 48)
 	-- CanvasGroup lets us fade the whole window (GroupTransparency) in one tween
+	-- ambient glow blobs: soft colored light bleeding through the frosted glass (liquid-glass look)
+	local function ambientBlob(parent, color, size, pos, tr)
+		return new("ImageLabel", {
+			Image = "rbxassetid://5028857084", ImageColor3 = color, ImageTransparency = tr or 0.65,
+			BackgroundTransparency = 1, Size = size, Position = pos, AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = 0,
+		}, parent)
+	end
+	ambientBlob(holder, Theme.Accent, UDim2.fromOffset(260, 260), UDim2.new(0, 20, 0, 20), 0.72)
+	ambientBlob(holder, Theme.Accent2, UDim2.fromOffset(220, 220), UDim2.new(1, -20, 1, -20), 0.75)
 	local win = new("CanvasGroup", { Name = "Main", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Background, BackgroundTransparency = 0.24, GroupTransparency = 1, ClipsDescendants = true, ZIndex = 1 }, holder)
 	corner(win, 16); stroke(win, Theme.White, 0.72, 1.4); glassSheen(win, 16, 1)
+	-- animated shimmering edge: a slowly-rotating accent gradient along the window border
+	do
+		local edgeStroke = new("UIStroke", { Thickness = 1.2, Transparency = 0.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, win)
+		local edgeGrad = new("UIGradient", {
+			Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Theme.Accent),
+				ColorSequenceKeypoint.new(0.5, Theme.White),
+				ColorSequenceKeypoint.new(1, Theme.Accent2),
+			}),
+		}, edgeStroke)
+		self._track(game:GetService("RunService").Heartbeat:Connect(function(dt)
+			edgeGrad.Rotation = (edgeGrad.Rotation + dt * 30) % 360
+		end))
+	end
 	-- smooth open / close / minimize (scale + fade together, from the window's own center)
 	local function showWin(animate)
 		holder.Visible = true
@@ -271,7 +294,8 @@ function RayVinzUI:CreateWindow(opts)
 	-- left-aligned brand: logo + (map name + faint "By author") + version/tags row
 	local brand = new("Frame", { Size = UDim2.new(1, -92, 1, 0), Position = UDim2.new(0, 80, 0, 0), BackgroundTransparency = 1 }, title)
 	local blogo = new("Frame", { Size = UDim2.fromOffset(38, 38), Position = UDim2.new(0, 0, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundTransparency = 1 }, brand)
-	iconImage(blogo, opts.Logo, UDim2.fromOffset(38, 38), Theme.White, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
+	local blogoIcon = iconImage(blogo, opts.Logo, UDim2.fromOffset(38, 38), Theme.Text, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
+	self._logoIcon = blogoIcon -- tinted with Theme.Text so it stays visible across every theme preset
 	-- row 1: map name + "By author" (faint, thin, small)
 	local r1 = new("Frame", { Size = UDim2.new(1, -48, 0, 16), Position = UDim2.new(0, 48, 0, 7), BackgroundTransparency = 1 }, brand)
 	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 7), VerticalAlignment = Enum.VerticalAlignment.Bottom }, r1)

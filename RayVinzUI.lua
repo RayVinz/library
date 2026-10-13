@@ -378,18 +378,17 @@ function RayVinzUI:CreateWindow(opts)
 	if opts.Resizable ~= false then
 		local minW, minH = (opts.MinSize and opts.MinSize[1]) or 480, (opts.MinSize and opts.MinSize[2]) or 340
 		local maxW, maxH = (opts.MaxSize and opts.MaxSize[1]) or 1200, (opts.MaxSize and opts.MaxSize[2]) or 860
-		-- a soft curved swoosh hugging the corner (iPadOS resize-handle look), not a boxed chip:
-		-- a bigger rounded square clipped down to a tiny corner window so only its arc shows.
-		-- parented to holder (not win): it sits flush at the exact corner (0 inset), which is
-		-- INSIDE win's own 16px rounded-corner clip zone, so win would clip it away entirely.
-		local grip = new("TextButton", { Name = "ResizeHandle", Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(28, 28),
+		-- corner bracket: two straight rounded bars forming an L-hook at the corner. No clipping
+		-- trick (that was fragile across two rounds) -- just two plain opaque bars, so it can't
+		-- silently fail to render. Parented to holder, clear of win's rounded-corner clip.
+		local grip = new("TextButton", { Name = "ResizeHandle", Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(34, 34),
 			Position = UDim2.new(1, 0, 1, 0), AnchorPoint = Vector2.new(1, 1), BackgroundTransparency = 1, ZIndex = 10 }, holder)
-		local arcClip = new("Frame", { Size = UDim2.fromOffset(16, 16), Position = UDim2.new(1, 0, 1, 0), AnchorPoint = Vector2.new(1, 1), BackgroundTransparency = 1, ClipsDescendants = true }, grip)
-		local arc = new("Frame", { Size = UDim2.fromOffset(32, 32), Position = UDim2.new(1, 0, 1, 0), AnchorPoint = Vector2.new(1, 1), BackgroundTransparency = 1 }, arcClip)
-		corner(arc, 16)
-		local arcStroke = stroke(arc, Theme.SubText, 0.25, 2)
-		grip.MouseEnter:Connect(function() tween(arcStroke, 0.12, { Color = Theme.Accent, Transparency = 0 }) end)
-		grip.MouseLeave:Connect(function() tween(arcStroke, 0.12, { Color = Theme.SubText, Transparency = 0.25 }) end)
+		local barH = new("Frame", { Size = UDim2.fromOffset(22, 3), Position = UDim2.new(1, -8, 1, -8), AnchorPoint = Vector2.new(1, 1), BackgroundColor3 = Theme.SubText, BackgroundTransparency = 0.1, BorderSizePixel = 0 }, grip)
+		corner(barH, 2)
+		local barV = new("Frame", { Size = UDim2.fromOffset(3, 22), Position = UDim2.new(1, -8, 1, -8), AnchorPoint = Vector2.new(1, 1), BackgroundColor3 = Theme.SubText, BackgroundTransparency = 0.1, BorderSizePixel = 0 }, grip)
+		corner(barV, 2)
+		grip.MouseEnter:Connect(function() tween(barH, 0.12, { BackgroundColor3 = Theme.Accent, BackgroundTransparency = 0 }); tween(barV, 0.12, { BackgroundColor3 = Theme.Accent, BackgroundTransparency = 0 }) end)
+		grip.MouseLeave:Connect(function() tween(barH, 0.12, { BackgroundColor3 = Theme.SubText, BackgroundTransparency = 0.1 }); tween(barV, 0.12, { BackgroundColor3 = Theme.SubText, BackgroundTransparency = 0.1 }) end)
 		local resizing, startInput, startSize, startAbsPos
 		grip.InputBegan:Connect(function(inp)
 			if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then

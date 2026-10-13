@@ -995,6 +995,111 @@ function RayVinzUI:_section(page, opts)
 		return { Set = function(label, value) if grid[label] then grid[label].Text = tostring(value) end end }
 	end
 
+	-- Stats: live stat cards (money, level, anything). Each item reads from Source (an
+	-- IntValue/NumberValue/StringValue like leaderstats.Money), Source + Attribute, or a Get
+	-- function polled every Interval seconds. Rate = true adds a "+1.2K/min" line.
+	function section:Stats(o)
+		o = o or {}
+		local interval = o.Interval or 1
+		local items = o.Items or {}
+		local r = row(0); pad(r, 13, 14, 13, 14); vlist(r, 10)
+		local anyRate = false
+		for _, it in ipairs(items) do if it.Rate then anyRate = true end end
+		local cardH = anyRate and 74 or 56
+
+		local function short(n)
+			local a = math.abs(n)
+			for _, u in ipairs({ { 1e15, "Qa" }, { 1e12, "T" }, { 1e9, "B" }, { 1e6, "M" }, { 1e3, "K" } }) do
+				if a >= u[1] then return (string.format("%.2f", n / u[1]):gsub("%.?0+$", "")) .. u[2] end
+			end
+			return tostring(round(n, 2))
+		end
+		local function comma(n)
+			local s = tostring(math.floor(math.abs(n) + 0.5)):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+			return (n < 0 and "-" or "") .. s
+		end
+		local function fmt(it, v)
+			if type(it.Format) == "function" then local ok, s = pcall(it.Format, v) return ok and tostring(s) or "--" end
+			if type(v) ~= "number" then return tostring(v) end
+			if it.Format == "comma" then return comma(v) end
+			if it.Format == "raw" then return tostring(v) end
+			return short(v)
+		end
+		local function read(it)
+			if it.Get then return pcall(it.Get) end
+			if it.Source then
+				if it.Attribute then return pcall(function() return it.Source:GetAttribute(it.Attribute) end) end
+				return pcall(function() return it.Source.Value end)
+			end
+			return true, it.Value
+		end
+
+		local cards, byLabel, rowN = {}, {}, nil
+		local function update(c)
+			local ok, v = read(c.it)
+			if not ok or v == nil then c.val.Text = "--" return end
+			if v ~= c.last then
+				if type(v) == "number" and type(c.last) == "number" then
+					tween(c.val, 0.12, { TextColor3 = v > c.last and Theme.Green or Theme.Error })
+					task.delay(0.45, function() if c.val.Parent then tween(c.val, 0.3, { TextColor3 = Theme.Text }) end end)
+				end
+				c.last = v
+				c.val.Text = (c.it.Prefix or "") .. fmt(c.it, v) .. (c.it.Suffix or "")
+			end
+			if c.rate and type(v) == "number" then
+				local now = os.clock()
+				table.insert(c.samples, { now, v })
+				while #c.samples > 2 and now - c.samples[1][1] > 60 do table.remove(c.samples, 1) end
+				local first = c.samples[1]
+				local dt = now - first[1]
+				if dt >= 1 then
+					local perMin = (v - first[2]) / dt * 60
+					c.rate.Text = (perMin >= 0 and "+" or "-") .. short(math.abs(perMin)) .. "/min"
+					c.rate.TextColor3 = perMin > 0 and Theme.Green or (perMin < 0 and Theme.Error or Theme.SubText)
+				end
+			end
+		end
+
+		for i, it in ipairs(items) do
+			if (i - 1) % 2 == 0 then
+				rowN = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, cardH), LayoutOrder = i }, r)
+				new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 12) }, rowN)
+			end
+			local c = new("Frame", { BackgroundColor3 = Theme.Elevated, BackgroundTransparency = 0.55, Size = UDim2.new(0.5, -6, 1, 0), LayoutOrder = i }, rowN)
+			corner(c, 12); stroke(c, Theme.White, 0.68, 1.2); grad(c, Color3.new(1, 1, 1), Color3.fromRGB(190, 190, 200), 90); pad(c, 11, 12, 11, 12); vlist(c, 6)
+			local top = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 14), LayoutOrder = 1 }, c)
+			iconImage(top, it.Icon, UDim2.fromOffset(13, 13), it.Color or Theme.SubText, UDim2.new(0, 0, 0.5, 0), Vector2.new(0, 0.5))
+			local tl = ltext(top, it.Label or "", 11, Theme.SubText, FM); tl.Position = UDim2.new(0, it.Icon and 19 or 0, 0, 0); tl.Size = UDim2.new(1, -19, 1, 0)
+			local val = ltext(c, "--", 15, Theme.Text, FB); val.Size = UDim2.new(1, 0, 0, 18); val.LayoutOrder = 2
+			local rate
+			if it.Rate then rate = ltext(c, "+0/min", 11, Theme.SubText, FM); rate.Size = UDim2.new(1, 0, 0, 13); rate.LayoutOrder = 3 end
+			local card = { it = it, val = val, rate = rate, samples = {}, last = nil }
+			table.insert(cards, card)
+			if it.Label then byLabel[it.Label] = card end
+			-- value objects / attributes update instantly instead of waiting for the next poll
+			if it.Source and not it.Get then
+				pcall(function()
+					local sig = it.Attribute and it.Source:GetAttributeChangedSignal(it.Attribute) or it.Source.Changed
+					trackConn(sig:Connect(function() update(card) end))
+				end)
+			end
+			update(card)
+		end
+
+		local acc = 0
+		trackConn(game:GetService("RunService").Heartbeat:Connect(function(dt)
+			acc = acc + dt
+			if acc < interval then return end
+			acc = 0
+			for _, c in ipairs(cards) do update(c) end
+		end))
+
+		return {
+			Set = function(label, value) local c = byLabel[label] if c then c.it.Value = value; update(c) end end,
+			Get = function(label) local c = byLabel[label] return c and c.last end,
+		}
+	end
+
 	-- SystemInfo (live FPS / Ping / Players / Game / Time)
 	function section:SystemInfo(o)
 		o = o or {}; local ic = o.Icons or {}

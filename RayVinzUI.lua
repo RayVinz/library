@@ -37,11 +37,62 @@ local function clamp(x, a, b) if x < a then return a elseif x > b then return b 
 local function round(n, d) if d == nil then return math.floor(n + 0.5) end local m = 10 ^ d return math.floor(n * m + 0.5) / m end
 local function indexOf(t, v) for i, x in ipairs(t) do if x == v then return i end end return nil end
 
+-- ================= live retheme registry =================
+-- Instead of scanning the tree later and guessing which elements used to be
+-- which color (fragile: breaks the moment anything is mid-tween, and drifts
+-- further every time it's called), every themed property is bound to its
+-- Theme key *once*, at creation, by identity. SetTheme/SetAccent then just
+-- set the live value straight from the registry -- no comparisons, so it's
+-- correct no matter how many times or how fast you switch themes.
+local ThemeRegistry = {} -- { {inst=Instance, prop="BackgroundColor3", role="Card"}, ... }
+local ThemeGradients = {} -- { {inst=UIGradient, role1="Accent", role2="Accent2"}, ... }
+local function roleOfColor(value)
+	if typeof(value) ~= "Color3" then return nil end
+	for key, v in pairs(Theme) do
+		if typeof(v) == "Color3" and v == value then return key end
+	end
+	return nil
+end
+local TRACKED_COLOR_PROPS = { BackgroundColor3 = true, TextColor3 = true, ImageColor3 = true, Color = true }
+
 local function new(class, props, parent)
 	local i = Instance.new(class)
-	if props then for k, v in pairs(props) do i[k] = v end end
+	if props then
+		for k, v in pairs(props) do
+			i[k] = v
+			if class == "UIGradient" and k == "Color" and typeof(v) == "ColorSequence" then
+				local kps = v.Keypoints
+				if kps and #kps == 2 then
+					local r1, r2 = roleOfColor(kps[1].Value), roleOfColor(kps[2].Value)
+					if r1 and r2 then table.insert(ThemeGradients, { inst = i, role1 = r1, role2 = r2 }) end
+				end
+			elseif TRACKED_COLOR_PROPS[k] then
+				local role = roleOfColor(v)
+				if role then table.insert(ThemeRegistry, { inst = i, prop = k, role = role }) end
+			end
+		end
+	end
 	if parent then i.Parent = parent end
 	return i
+end
+-- call after SetTheme/SetAccent change Theme[...]: replays every binding directly, no guessing
+local function applyThemeRegistry()
+	for idx = #ThemeRegistry, 1, -1 do
+		local e = ThemeRegistry[idx]
+		if not e.inst.Parent then
+			table.remove(ThemeRegistry, idx)
+		else
+			pcall(function() e.inst[e.prop] = Theme[e.role] end)
+		end
+	end
+	for idx = #ThemeGradients, 1, -1 do
+		local e = ThemeGradients[idx]
+		if not e.inst.Parent then
+			table.remove(ThemeGradients, idx)
+		else
+			pcall(function() e.inst.Color = ColorSequence.new(Theme[e.role1], Theme[e.role2]) end)
+		end
+	end
 end
 local function corner(p, r) return new("UICorner", { CornerRadius = UDim.new(0, r) }, p) end
 local function stroke(p, color, tr, th) return new("UIStroke", { Color = color or Theme.White, Transparency = tr == nil and 0.9 or tr, Thickness = th or 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, p) end
@@ -1125,26 +1176,9 @@ RayVinzUI.AccentPresets = {
 -- change the accent live (recolors existing accent-colored instances in the window)
 function RayVinzUI:SetAccent(color, color2)
 	if type(color) == "string" then local p = RayVinzUI.AccentPresets[color]; if p then color, color2 = p[1], p[2] end end
-	local old = Theme.Accent
 	Theme.Accent = color or Theme.Accent
 	Theme.Accent2 = color2 or Theme.Accent2
-	local gui = self.Gui or ActiveGui
-	if not gui then return self end
-	local function eq(a, b) return a and b and math.abs(a.R - b.R) < 0.02 and math.abs(a.G - b.G) < 0.02 and math.abs(a.B - b.B) < 0.02 end
-	for _, d in ipairs(gui:GetDescendants()) do
-		pcall(function()
-			if eq(d.BackgroundColor3, old) then d.BackgroundColor3 = Theme.Accent end
-		end)
-		pcall(function() if eq(d.ImageColor3, old) then d.ImageColor3 = Theme.Accent end end)
-		pcall(function() if eq(d.TextColor3, old) then d.TextColor3 = Theme.Accent end end)
-		pcall(function() if d:IsA("UIStroke") and eq(d.Color, old) then d.Color = Theme.Accent end end)
-		pcall(function()
-			if d:IsA("UIGradient") then
-				local kps = d.Color.Keypoints
-				if kps and #kps >= 2 and eq(kps[1].Value, old) then d.Color = ColorSequence.new(Theme.Accent, Theme.Accent2) end
-			end
-		end)
-	end
+	applyThemeRegistry() -- direct role -> instance replay; no color-matching, so no drift even under rapid/looped calls
 	return self
 end
 -- full theme presets + live theme swap (not just accent)
@@ -1156,20 +1190,10 @@ RayVinzUI.ThemePresets = {
 function RayVinzUI:SetTheme(t)
 	if type(t) == "string" then t = RayVinzUI.ThemePresets[t] end
 	if type(t) ~= "table" then return self end
-	local remap = {} -- { oldColor, newColor }
 	for _, k in ipairs({ "Background", "Sidebar", "Card", "Elevated", "Select", "Field", "Text", "SubText", "Muted" }) do
-		if t[k] then table.insert(remap, { Theme[k], t[k] }); Theme[k] = t[k] end
+		if t[k] then Theme[k] = t[k] end
 	end
-	local gui = self.Gui or ActiveGui
-	if not gui then return self end
-	local function eq(a, b) return a and b and math.abs(a.R - b.R) < 0.02 and math.abs(a.G - b.G) < 0.02 and math.abs(a.B - b.B) < 0.02 end
-	for _, d in ipairs(gui:GetDescendants()) do
-		for _, p in ipairs(remap) do
-			pcall(function() if eq(d.BackgroundColor3, p[1]) then d.BackgroundColor3 = p[2] end end)
-			pcall(function() if eq(d.TextColor3, p[1]) then d.TextColor3 = p[2] end end)
-			pcall(function() if (d.ClassName == "ImageLabel" or d.ClassName == "ImageButton") and eq(d.ImageColor3, p[1]) then d.ImageColor3 = p[2] end end)
-		end
-	end
+	applyThemeRegistry() -- direct role -> instance replay; safe to call back-to-back as many times as you want
 	return self
 end
 -- animated rainbow accent (opt-in). UI:RainbowAccent(true) / UI:RainbowAccent(false)

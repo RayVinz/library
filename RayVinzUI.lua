@@ -374,8 +374,9 @@ function RayVinzUI:CreateWindow(opts)
 	if opts.Resizable ~= false then
 		local minW, minH = (opts.MinSize and opts.MinSize[1]) or 480, (opts.MinSize and opts.MinSize[2]) or 340
 		local maxW, maxH = (opts.MaxSize and opts.MaxSize[1]) or 1200, (opts.MaxSize and opts.MaxSize[2]) or 860
+		-- parented to holder (not win) so the window's rounded-corner clip never crops it
 		local grip = new("TextButton", { Name = "ResizeHandle", Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(24, 24),
-			Position = UDim2.new(1, -2, 1, -2), AnchorPoint = Vector2.new(1, 1), BackgroundTransparency = 1, ZIndex = 50 }, win)
+			Position = UDim2.new(1, -2, 1, -2), AnchorPoint = Vector2.new(1, 1), BackgroundTransparency = 1, ZIndex = 5 }, holder)
 		local gripLines = {}
 		for i = 1, 3 do
 			local ln = new("Frame", { Size = UDim2.fromOffset(9 - (i - 1) * 2, 2), Position = UDim2.new(1, -5 - (i - 1) * 5, 1, -5 - (i - 1) * 5),

@@ -1403,6 +1403,229 @@ function RayVinzUI:Unload()
 	end)
 end
 
+-- ================= Key System =================
+-- Glass key gate shown before the hub. Yields until the user is done; returns true when a
+-- key was accepted, false if they closed it.
+--   local ok = UI:KeySystem({
+--       Title = "RayVinz Hub", SubTitle = "Key System", Logo = "rbxassetid://...",
+--       Verify = function(key) return key == "abc" end, -- or Keys = { "abc", "def" }
+--       KeyLink = "https://your.site/getkey",           -- "Get a key" copies this
+--       SupportedGames = { [1234567] = true },          -- optional, by PlaceId
+--       Links = { { Title = "Discord", Content = "discord.gg/xxx", Icon = "message-circle" } },
+--       SaveKey = true,                                 -- remember a working key
+--   })
+--   if not ok then return end
+function RayVinzUI:KeySystem(o)
+	o = o or {}
+	local saveFile = (o.FileName or "RayVinzKey") .. ".txt"
+	local function trim(s) return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
+	local function check(key)
+		if key == "" then return false end
+		if o.Verify then local ok, r = pcall(o.Verify, key) return ok and r and true or false end
+		if o.Keys then for _, k in ipairs(o.Keys) do if k == key then return true end end end
+		return false
+	end
+	if o.SaveKey and isfile and readfile then
+		local ok, saved = pcall(function() return isfile(saveFile) and readfile(saveFile) or nil end)
+		if ok and saved and check(trim(saved)) then
+			if o.OnSuccess then task.spawn(o.OnSuccess, trim(saved)) end
+			return true
+		end
+	end
+
+	pcall(function()
+		for _, p in ipairs({ guiParent() }) do local old = p:FindFirstChild("RayVinzKey") if old then old:Destroy() end end
+	end)
+	local gui = new("ScreenGui", { Name = "RayVinzKey", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true, DisplayOrder = 100 }, guiParent())
+	local blur; pcall(function() blur = new("BlurEffect", { Name = "RayVinzBlur", Size = 0 }, game:GetService("Lighting")) end)
+	if blur then tween(blur, 0.3, { Size = 20 }) end
+
+	local W, H = 640, 340
+	local holder = new("Frame", { Size = UDim2.fromOffset(math.floor(W * 0.94), math.floor(H * 0.94)), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1 }, gui)
+	local uiScale = new("UIScale", { Scale = 1 }, holder)
+	pcall(function() local vp = workspace.CurrentCamera.ViewportSize uiScale.Scale = clamp(math.min(1, (vp.X - 24) / W, (vp.Y - 24) / H), 0.45, 1) end)
+	local sh = shadow(holder, 1, 60)
+	local card = new("CanvasGroup", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Background, BackgroundTransparency = 0.18, GroupTransparency = 1 }, holder)
+	corner(card, 18); stroke(card, Theme.White, 0.75, 1.2); glassSheen(card, 18, 1)
+	-- soft accent light from the bottom-left corner (a gradient, no image asset to show hard edges)
+	local glowF = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Accent, BorderSizePixel = 0 }, card); corner(glowF, 18)
+	new("UIGradient", { Rotation = -45, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.7), NumberSequenceKeypoint.new(0.3, 0.95), NumberSequenceKeypoint.new(1, 1) }) }, glowF)
+
+	local function button(parent, text, icon, primary, pos, size)
+		local b = new("TextButton", { Text = "", AutoButtonColor = false, Position = pos, Size = size, BackgroundColor3 = primary and Theme.Accent or Theme.Field, BackgroundTransparency = primary and 0.05 or 0.4 }, parent)
+		corner(b, 12); stroke(b, Theme.White, primary and 0.8 or 0.86, 1)
+		local col = primary and Theme.AccentText or Theme.Text
+		local row = new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(0, 1), AutomaticSize = Enum.AutomaticSize.X, Position = UDim2.fromScale(0.5, 0), AnchorPoint = Vector2.new(0.5, 0) }, b)
+		new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 10), VerticalAlignment = Enum.VerticalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder }, row)
+		local ic = iconImage(row, icon, UDim2.fromOffset(16, 16), col); ic.LayoutOrder = 1
+		local lb = ltext(row, text, 14, col, FM); lb.LayoutOrder = 2; lb.Size = UDim2.fromOffset(0, 20); lb.AutomaticSize = Enum.AutomaticSize.X
+		local base = b.BackgroundTransparency
+		b.MouseEnter:Connect(function() tween(b, 0.12, { BackgroundTransparency = math.max(base - 0.15, 0) }) end)
+		b.MouseLeave:Connect(function() tween(b, 0.12, { BackgroundTransparency = base }) end)
+		return b, lb
+	end
+
+	-- ---------- left column ----------
+	local left = new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(26, 24), Size = UDim2.new(0, 330, 1, -48) }, card)
+	local brand = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 48) }, left)
+	local logo = o.Logo or "sparkles"
+	local logoIsImage = type(logo) == "number" or (type(logo) == "string" and string.find(logo, "rbxassetid://") == 1)
+	iconImage(brand, logo, UDim2.fromOffset(44, 44), logoIsImage and Theme.White or Theme.Accent, UDim2.new(0, 0, 0.5, 0), Vector2.new(0, 0.5))
+	local tl = ltext(brand, o.Title or "RayVinz Hub", 22, Theme.Text, FB); tl.Position = UDim2.fromOffset(56, 0); tl.Size = UDim2.new(1, -56, 0, 26)
+	local st = ltext(brand, o.SubTitle or "Key System", 13, Theme.SubText, F); st.Position = UDim2.fromOffset(56, 27); st.Size = UDim2.new(1, -56, 0, 18)
+	draggable(brand, holder)
+
+	local kl = ltext(left, "License key", 12, Theme.SubText, F); kl.Position = UDim2.fromOffset(0, 80); kl.Size = UDim2.new(1, 0, 0, 16)
+	local field = new("Frame", { Position = UDim2.fromOffset(0, 102), Size = UDim2.new(1, 0, 0, 48), BackgroundColor3 = Theme.Field, BackgroundTransparency = 0.45 }, left)
+	corner(field, 12); local fieldStroke = stroke(field, Theme.White, 0.82, 1)
+	iconImage(field, "key-round", UDim2.fromOffset(18, 18), Theme.SubText, UDim2.new(0, 16, 0.5, 0), Vector2.new(0, 0.5))
+	local box = new("TextBox", { BackgroundTransparency = 1, Position = UDim2.fromOffset(46, 0), Size = UDim2.new(1, -58, 1, 0), Text = "", PlaceholderText = o.Placeholder or "Paste your key here",
+		PlaceholderColor3 = Theme.Muted, TextColor3 = Theme.Text, Font = F, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false, TextTruncate = Enum.TextTruncate.AtEnd }, field)
+	box.Focused:Connect(function() tween(fieldStroke, 0.15, { Color = Theme.Accent, Transparency = 0.3 }) end)
+	box.FocusLost:Connect(function() tween(fieldStroke, 0.15, { Color = Theme.White, Transparency = 0.82 }) end)
+
+	local submitBtn, submitTxt = button(left, "Submit", "arrow-right", true, UDim2.fromOffset(0, 164), UDim2.new(0.5, -6, 0, 46))
+	local getBtn, getTxt = button(left, o.GetKeyText or "Get a key", "globe", false, UDim2.new(0.5, 6, 0, 164), UDim2.new(0.5, -6, 0, 46))
+
+	local welcome = new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 1, 0), AnchorPoint = Vector2.new(0, 1), Size = UDim2.new(1, 0, 0, 44) }, left)
+	local av = new("ImageLabel", { Size = UDim2.fromOffset(44, 44), BackgroundColor3 = Theme.Field, BackgroundTransparency = 0.3 }, welcome); corner(av, 22); stroke(av, Theme.Accent, 0.35, 1.5)
+	task.spawn(function()
+		local ok, img = pcall(function() return Players:GetUserThumbnailAsync(LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150) end)
+		if ok and img then av.Image = img end
+	end)
+	local wb = ltext(welcome, "Welcome Back", 12, Theme.SubText, F); wb.Position = UDim2.fromOffset(56, 4); wb.Size = UDim2.new(1, -56, 0, 16)
+	local wn = ltext(welcome, (LocalPlayer and LocalPlayer.DisplayName or "Player") .. "!", 15, Theme.Text, FB); wn.Position = UDim2.fromOffset(56, 21); wn.Size = UDim2.new(1, -56, 0, 20)
+
+	new("Frame", { Position = UDim2.fromOffset(376, 24), Size = UDim2.new(0, 1, 1, -48), BackgroundColor3 = Theme.White, BackgroundTransparency = 0.9, BorderSizePixel = 0 }, card)
+
+	-- ---------- right column ----------
+	local right = new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(396, 22), Size = UDim2.new(0, 220, 1, -44) }, card)
+	local dg = ltext(right, "Detected game", 12, Theme.SubText, F); dg.Position = UDim2.fromOffset(0, 6); dg.Size = UDim2.new(1, -64, 0, 16)
+	local closeB = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(24, 24), Position = UDim2.new(1, 0, 0, 2), AnchorPoint = Vector2.new(1, 0), BackgroundTransparency = 1 }, right)
+	iconImage(closeB, "x", UDim2.fromOffset(16, 16), Theme.SubText, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
+	local moonB = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(24, 24), Position = UDim2.new(1, -32, 0, 2), AnchorPoint = Vector2.new(1, 0), BackgroundTransparency = 1 }, right)
+	iconImage(moonB, "moon", UDim2.fromOffset(16, 16), Theme.SubText, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
+
+	local gcard = new("Frame", { Position = UDim2.fromOffset(0, 32), Size = UDim2.new(1, 0, 0, 68), BackgroundColor3 = Theme.Card, BackgroundTransparency = 0.45 }, right)
+	corner(gcard, 14); stroke(gcard, Theme.White, 0.86, 1)
+	local thumb = new("ImageLabel", { Size = UDim2.fromOffset(48, 48), Position = UDim2.new(0, 10, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = Theme.Field, BackgroundTransparency = 0.2, ScaleType = Enum.ScaleType.Crop }, gcard); corner(thumb, 10)
+	local gname = ltext(gcard, "Unknown game", 14, Theme.Text, FB); gname.Position = UDim2.fromOffset(70, 14); gname.Size = UDim2.new(1, -80, 0, 18)
+	local supported = o.SupportedGames == nil or o.SupportedGames[game.PlaceId] == true
+	local gstat = ltext(gcard, o.SupportedGames == nil and "Detected" or (supported and "Supported" or "Not in our list"), 12, supported and Theme.Green or Theme.SubText, F)
+	gstat.Position = UDim2.fromOffset(70, 36); gstat.Size = UDim2.new(1, -80, 0, 16)
+	task.spawn(function()
+		local ok, info = pcall(function() return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId) end)
+		if ok and type(info) == "table" then
+			if info.Name then gname.Text = info.Name end
+			if info.IconImageAssetId and info.IconImageAssetId ~= 0 then thumb.Image = "rbxassetid://" .. info.IconImageAssetId end
+		end
+	end)
+
+	local function infoRow(y, label, value, color)
+		local l = ltext(right, label, 12, Theme.SubText, F); l.Position = UDim2.fromOffset(0, y); l.Size = UDim2.new(0.5, 0, 0, 18)
+		local v = ltext(right, value, 12, color or Theme.Text, FM, Enum.TextXAlignment.Right); v.Position = UDim2.new(0.5, 0, 0, y); v.Size = UDim2.new(0.5, 0, 0, 18)
+		return v
+	end
+	local exec = "Unknown"
+	pcall(function() if identifyexecutor then exec = tostring((identifyexecutor())) end end)
+	infoRow(112, "Executor", exec)
+	local statusVal = infoRow(136, "Status", "Key required", Theme.Warning)
+	new("Frame", { Position = UDim2.fromOffset(0, 164), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Theme.White, BackgroundTransparency = 0.9, BorderSizePixel = 0 }, right)
+
+	local links = new("ScrollingFrame", { Position = UDim2.fromOffset(0, 176), Size = UDim2.new(1, 0, 1, -176), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 0,
+		CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y }, right)
+	vlist(links, 8)
+	for i, lk in ipairs(o.Links or {}) do
+		local lc = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 52), BackgroundColor3 = Theme.Card, BackgroundTransparency = 0.45, LayoutOrder = i }, links)
+		corner(lc, 12); stroke(lc, Theme.White, 0.88, 1)
+		iconImage(lc, lk.Icon or "link", UDim2.fromOffset(20, 20), Theme.Accent, UDim2.new(0, 14, 0.5, 0), Vector2.new(0, 0.5))
+		local lt = ltext(lc, lk.Title or "Link", 13, Theme.Text, FB); lt.Position = UDim2.fromOffset(48, 9); lt.Size = UDim2.new(1, -58, 0, 17)
+		local ls = ltext(lc, lk.Content or "", 11, Theme.SubText, F); ls.Position = UDim2.fromOffset(48, 27); ls.Size = UDim2.new(1, -58, 0, 15)
+		lc.MouseEnter:Connect(function() tween(lc, 0.12, { BackgroundTransparency = 0.25 }) end)
+		lc.MouseLeave:Connect(function() tween(lc, 0.12, { BackgroundTransparency = 0.45 }) end)
+		lc.MouseButton1Click:Connect(function()
+			pcall(function() setclipboard(lk.Url or lk.Content or "") end)
+			if lk.Callback then task.spawn(lk.Callback) end
+			ls.Text = "Copied to clipboard!"
+			task.delay(1.4, function() ls.Text = lk.Content or "" end)
+		end)
+	end
+
+	-- ---------- behaviour ----------
+	local result = nil
+	local done = Instance.new("BindableEvent")
+	local function close(ok)
+		if result ~= nil then return end
+		result = ok
+		if blur then tween(blur, 0.25, { Size = 0 }) end
+		tween(card, 0.25, { GroupTransparency = 1 }); tween(sh, 0.25, { ImageTransparency = 1 })
+		tween(holder, 0.25, { Size = UDim2.fromOffset(math.floor(W * 0.94), math.floor(H * 0.94)) })
+		task.delay(0.28, function()
+			pcall(function() gui:Destroy() end)
+			pcall(function() if blur then blur:Destroy() end end)
+			done:Fire()
+		end)
+	end
+	local function shake()
+		local base = holder.Position
+		task.spawn(function()
+			for _, x in ipairs({ -10, 9, -6, 4, 0 }) do
+				tween(holder, 0.05, { Position = UDim2.new(base.X.Scale, base.X.Offset + x, base.Y.Scale, base.Y.Offset) })
+				task.wait(0.05)
+			end
+		end)
+	end
+	local busy = false
+	local function submit()
+		if busy or result ~= nil then return end
+		local key = trim(box.Text)
+		busy = true; submitTxt.Text = "Checking..."
+		statusVal.Text = "Checking..."; statusVal.TextColor3 = Theme.SubText
+		local ok = check(key)
+		busy = false; submitTxt.Text = "Submit"
+		if ok then
+			statusVal.Text = "Key valid"; statusVal.TextColor3 = Theme.Green
+			tween(fieldStroke, 0.2, { Color = Theme.Green, Transparency = 0.2 })
+			if o.SaveKey and writefile then pcall(writefile, saveFile, key) end
+			if o.OnSuccess then task.spawn(o.OnSuccess, key) end
+			task.delay(0.6, function() close(true) end)
+		else
+			statusVal.Text = key == "" and "Enter a key" or "Invalid key"; statusVal.TextColor3 = Theme.Error
+			tween(fieldStroke, 0.2, { Color = Theme.Error, Transparency = 0.2 })
+			shake()
+			task.delay(1.2, function() if result == nil then tween(fieldStroke, 0.3, { Color = Theme.White, Transparency = 0.82 }) end end)
+		end
+	end
+	submitBtn.MouseButton1Click:Connect(function() task.spawn(submit) end)
+	box.FocusLost:Connect(function(enter) if enter then task.spawn(submit) end end)
+	getBtn.MouseButton1Click:Connect(function()
+		if o.KeyLink then pcall(function() setclipboard(o.KeyLink) end) end
+		if o.OnGetKey then task.spawn(o.OnGetKey) end
+		getTxt.Text = "Link copied!"
+		task.delay(1.5, function() getTxt.Text = o.GetKeyText or "Get a key" end)
+	end)
+	closeB.MouseButton1Click:Connect(function() close(false) end)
+	local savedTheme, light = nil, false
+	moonB.MouseButton1Click:Connect(function()
+		light = not light
+		if light then
+			savedTheme = {}
+			for _, k in ipairs({ "Background", "Sidebar", "Card", "Elevated", "Select", "Field", "Text", "SubText", "Muted" }) do savedTheme[k] = Theme[k] end
+			self:SetTheme("Light")
+		elseif savedTheme then
+			self:SetTheme(savedTheme)
+		end
+	end)
+
+	tween(holder, 0.34, { Size = UDim2.fromOffset(W, H) })
+	tween(card, 0.34, { GroupTransparency = 0 })
+	tween(sh, 0.34, { ImageTransparency = 0.5 })
+
+	done.Event:Wait()
+	done:Destroy()
+	return result == true
+end
+
 -- ================= AntiSpy (protect your own script from remote spies / hooks) =================
 -- Detects known remote-spy GUIs and common function hooks, then (optionally) kicks the player.
 -- o = {

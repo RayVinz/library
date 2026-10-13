@@ -775,6 +775,7 @@ function RayVinzUI:_section(page, opts)
 		local box = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(150, 30), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), BackgroundColor3 = Theme.Field, BackgroundTransparency = 0.4 }, r); corner(box, 9); stroke(box, Theme.White, 0.8, 1)
 		local valTxt = ltext(box, "Select...", 12, Theme.Text, FM); valTxt.Position = UDim2.new(0, 10, 0, 0); valTxt.Size = UDim2.new(1, -28, 1, 0)
 		iconImage(box, "chevron-down", UDim2.fromOffset(12, 12), Theme.SubText, UDim2.new(1, -8, 0.5, 0), Vector2.new(1, 0.5))
+		local reposition, closeList, doRefresh
 		if o.RefreshButton then
 			local rb = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(20, 20), Position = UDim2.new(1, -24, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), BackgroundTransparency = 1, ZIndex = 2 }, box)
 			iconImage(rb, "refresh-cw", UDim2.fromOffset(13, 13), Theme.SubText, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
@@ -787,7 +788,6 @@ function RayVinzUI:_section(page, opts)
 		local catcher = new("TextButton", { Name = "DropCatcher", Text = "", AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 49 }, self._gui)
 		local tx, ty = 0, 0
 		local searchQuery = ""
-		local reposition, closeList, doRefresh
 		local function display() if multi then valTxt.Text = #selected > 0 and table.concat(selected, ", ") or "None" else valTxt.Text = selected and tostring(selected) or "Select..." end end
 		local function rebuild()
 			for _, c in ipairs(list:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end

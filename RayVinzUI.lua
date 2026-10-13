@@ -380,8 +380,10 @@ function RayVinzUI:CreateWindow(opts)
 		local maxW, maxH = (opts.MaxSize and opts.MaxSize[1]) or 1200, (opts.MaxSize and opts.MaxSize[2]) or 860
 		-- a soft curved swoosh hugging the corner (iPadOS resize-handle look), not a boxed chip:
 		-- a bigger rounded square clipped down to a tiny corner window so only its arc shows.
+		-- parented to holder (not win): it sits flush at the exact corner (0 inset), which is
+		-- INSIDE win's own 16px rounded-corner clip zone, so win would clip it away entirely.
 		local grip = new("TextButton", { Name = "ResizeHandle", Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(28, 28),
-			Position = UDim2.new(1, 0, 1, 0), AnchorPoint = Vector2.new(1, 1), BackgroundTransparency = 1, ZIndex = 10 }, win)
+			Position = UDim2.new(1, 0, 1, 0), AnchorPoint = Vector2.new(1, 1), BackgroundTransparency = 1, ZIndex = 10 }, holder)
 		local arcClip = new("Frame", { Size = UDim2.fromOffset(16, 16), Position = UDim2.new(1, 0, 1, 0), AnchorPoint = Vector2.new(1, 1), BackgroundTransparency = 1, ClipsDescendants = true }, grip)
 		local arc = new("Frame", { Size = UDim2.fromOffset(32, 32), Position = UDim2.new(1, 0, 1, 0), AnchorPoint = Vector2.new(1, 1), BackgroundTransparency = 1 }, arcClip)
 		corner(arc, 16)

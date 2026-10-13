@@ -345,8 +345,13 @@ function RayVinzUI:CreateWindow(opts)
 	-- left-aligned brand: logo + (map name + faint "By author") + version/tags row
 	local brand = new("Frame", { Size = UDim2.new(1, -92, 1, 0), Position = UDim2.new(0, 80, 0, 0), BackgroundTransparency = 1 }, title)
 	local blogo = new("Frame", { Size = UDim2.fromOffset(38, 38), Position = UDim2.new(0, 0, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundTransparency = 1 }, brand)
-	local blogoIcon = iconImage(blogo, opts.Logo, UDim2.fromOffset(38, 38), Theme.Text, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
-	self._logoIcon = blogoIcon -- tinted with Theme.Text so it stays visible across every theme preset
+	-- a real logo image (rbxassetid/number) keeps its own colors on every theme -- only a
+	-- named vector icon (e.g. "sparkles") gets tinted, since those are flat single-tone glyphs
+	local logoIsCustomImage = type(opts.Logo) == "number"
+		or (type(opts.Logo) == "string" and string.find(opts.Logo, "rbxassetid://") == 1)
+	local blogoIcon = iconImage(blogo, opts.Logo, UDim2.fromOffset(38, 38),
+		logoIsCustomImage and Theme.White or Theme.Text, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
+	self._logoIcon = blogoIcon
 	-- row 1: map name + "By author" (faint, thin, small)
 	local r1 = new("Frame", { Size = UDim2.new(1, -48, 0, 16), Position = UDim2.new(0, 48, 0, 7), BackgroundTransparency = 1 }, brand)
 	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 7), VerticalAlignment = Enum.VerticalAlignment.Bottom }, r1)
@@ -369,16 +374,69 @@ function RayVinzUI:CreateWindow(opts)
 		BorderSizePixel = 0, ScrollBarThickness = 0, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y }, win)
 	pad(sidebar, 14, 12, 12, 12); vlist(sidebar, 3)
 	self.Sidebar = sidebar
-	-- sidebar search (filters tabs by title); opts.Search = false to disable
+	-- sidebar deep search: matches tab titles AND every setting/label inside every
+	-- tab's page, so a buried toggle three tabs away is findable, not just tab names.
+	-- opts.Search = false to disable.
 	if opts.Search ~= false then
-		local sb = new("Frame", { Name = "Search", Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Theme.Field, BackgroundTransparency = 0.15, LayoutOrder = -2 }, sidebar); corner(sb, 8); stroke(sb, Theme.White, 0.85, 1)
+		local sb = new("Frame", { Name = "Search", Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Theme.Field, BackgroundTransparency = 0.15, LayoutOrder = -3 }, sidebar); corner(sb, 8); stroke(sb, Theme.White, 0.85, 1)
 		iconImage(sb, "search", UDim2.fromOffset(13, 13), Theme.Muted, UDim2.new(0, 10, 0.5, 0), Vector2.new(0, 0.5))
 		local sbox = new("TextBox", { BackgroundTransparency = 1, Size = UDim2.new(1, -36, 1, 0), Position = UDim2.new(0, 30, 0, 0), PlaceholderText = "Search...", PlaceholderColor3 = Theme.Muted, Text = "", TextColor3 = Theme.Text, Font = FM, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false }, sb)
+		local results = new("Frame", { Name = "SearchResults", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, Visible = false, LayoutOrder = -2 }, sidebar)
+		vlist(results, 4)
 		new("Frame", { Name = "SearchGap", Size = UDim2.new(1, 0, 0, 3), BackgroundTransparency = 1, LayoutOrder = -1 }, sidebar)
+
+		local function jumpTo(tab, inst)
+			self:_select(tab)
+			sbox.Text = ""
+			task.defer(function()
+				local ok, absY = pcall(function() return inst.AbsolutePosition.Y end)
+				if ok then
+					local target = tab._page.CanvasPosition.Y + (absY - tab._page.AbsolutePosition.Y) - 60
+					tab._page.CanvasPosition = Vector2.new(0, math.max(target, 0))
+				end
+				local row = inst
+				while row.Parent and row.Parent ~= tab._page do row = row.Parent end
+				if row:IsA("GuiObject") then
+					local hl = stroke(row, Theme.Accent, 0, 2)
+					task.delay(0.05, function() tween(hl, 0.9, { Transparency = 1 }) end)
+					task.delay(1, function() hl:Destroy() end)
+				end
+			end)
+		end
+
 		sbox:GetPropertyChangedSignal("Text"):Connect(function()
 			local q = string.lower(sbox.Text)
+			for _, child in ipairs(results:GetChildren()) do
+				if child:IsA("GuiObject") then child:Destroy() end
+			end
+			if q == "" then
+				results.Visible = false
+				for _, t in ipairs(self._tabs) do t._item.Visible = true end
+				return
+			end
+			local deepMatches = {}
 			for _, t in ipairs(self._tabs) do
-				t._item.Visible = (q == "") or (string.find(string.lower(t._label.Text), q, 1, true) ~= nil)
+				local titleMatch = string.find(string.lower(t._label.Text), q, 1, true) ~= nil
+				local pageMatch = false
+				for _, d in ipairs(t._page:GetDescendants()) do
+					if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Name ~= "Dot" and d.Text ~= "" then
+						if string.find(string.lower(d.Text), q, 1, true) then
+							pageMatch = true
+							if not titleMatch and #deepMatches < 8 then
+								table.insert(deepMatches, { tab = t, inst = d })
+							end
+						end
+					end
+				end
+				t._item.Visible = titleMatch or pageMatch
+			end
+			results.Visible = #deepMatches > 0
+			for i, m in ipairs(deepMatches) do
+				local row = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 26), BackgroundColor3 = Theme.Field, BackgroundTransparency = 0.2, LayoutOrder = i }, results)
+				corner(row, 6); stroke(row, Theme.White, 0.88, 1)
+				local lbl = ltext(row, m.inst.Text, 11, Theme.Text, FM); lbl.Position = UDim2.new(0, 8, 0, 0); lbl.Size = UDim2.new(1, -70, 1, 0)
+				local tagl = ltext(row, m.tab._label.Text, 9, Theme.Muted, FM); tagl.Position = UDim2.new(1, -62, 0, 0); tagl.Size = UDim2.new(0, 56, 1, 0); tagl.TextXAlignment = Enum.TextXAlignment.Right
+				row.MouseButton1Click:Connect(function() jumpTo(m.tab, m.inst) end)
 			end
 		end)
 	end

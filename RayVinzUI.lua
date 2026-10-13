@@ -76,12 +76,14 @@ local function new(class, props, parent)
 	return i
 end
 -- call after SetTheme/SetAccent change Theme[...]: replays every binding directly, no guessing
-local function applyThemeRegistry()
+-- only = optional set of roles to update (e.g. { Accent = true }); rainbow mode calls this
+-- 10x a second, so skipping every non-accent element matters
+local function applyThemeRegistry(only)
 	for idx = #ThemeRegistry, 1, -1 do
 		local e = ThemeRegistry[idx]
 		if not e.inst.Parent then
 			table.remove(ThemeRegistry, idx)
-		else
+		elseif not only or only[e.role] then
 			pcall(function() e.inst[e.prop] = Theme[e.role] end)
 		end
 	end
@@ -89,7 +91,7 @@ local function applyThemeRegistry()
 		local e = ThemeGradients[idx]
 		if not e.inst.Parent then
 			table.remove(ThemeGradients, idx)
-		else
+		elseif not only or only[e.role1] or only[e.role2] then
 			pcall(function() e.inst.Color = ColorSequence.new(Theme[e.role1], Theme[e.role2]) end)
 		end
 	end
@@ -280,7 +282,7 @@ function RayVinzUI:CreateWindow(opts)
 			}),
 		}, edgeStroke)
 		self._track(game:GetService("RunService").Heartbeat:Connect(function(dt)
-			edgeGrad.Rotation = (edgeGrad.Rotation + dt * 30) % 360
+			if holder.Visible then edgeGrad.Rotation = (edgeGrad.Rotation + dt * 30) % 360 end
 		end))
 	end
 	-- smooth open / close / minimize (scale + fade together, from the window's own center)
@@ -321,14 +323,24 @@ function RayVinzUI:CreateWindow(opts)
 	local lights = new("Frame", { Size = UDim2.fromOffset(52, 14), Position = UDim2.new(0, 16, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundTransparency = 1 }, title)
 	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8), VerticalAlignment = Enum.VerticalAlignment.Center }, lights)
 	-- maximize toggle (green): swap between normal and a larger size
-	local maximized = false
+	-- maximize centers the window (it may have been dragged/resized off to one side) and
+	-- restore puts back the exact size + position from before
+	local maximized, restore = false, nil
 	local function maximize()
 		local cam = workspace.CurrentCamera
-		local sx = (cam and cam.ViewportSize.X or 1280) * 0.9
-		local sy = (cam and cam.ViewportSize.Y or 720) * 0.88
+		local vp = cam and cam.ViewportSize or Vector2.new(1280, 720)
 		maximized = not maximized
-		W, H = maximized and math.floor(sx) or (opts.Width or 660), maximized and math.floor(sy) or (opts.Height or 460)
-		tween(holder, 0.3, { Size = UDim2.fromOffset(W, H) })
+		if maximized then
+			restore = { W = W, H = H, Pos = holder.Position }
+			W, H = math.floor(vp.X * 0.9), math.floor(vp.Y * 0.88)
+			uiScale.Scale = 1
+			tween(holder, 0.3, { Size = UDim2.fromOffset(W, H), Position = UDim2.fromScale(0.5, 0.5) })
+		else
+			local r = restore or { W = opts.Width or 660, H = opts.Height or 460, Pos = UDim2.fromScale(0.5, 0.5) }
+			W, H = r.W, r.H
+			pcall(fitScale)
+			tween(holder, 0.3, { Size = UDim2.fromOffset(W, H), Position = r.Pos })
+		end
 	end
 	local glyphs = { "x", "minus", "maximize-2" } -- lucide icons: close / minimize / expand
 	local marks = {}
@@ -393,16 +405,24 @@ function RayVinzUI:CreateWindow(opts)
 		local resizing, startInput, startSize, startAbsPos
 		grip.InputBegan:Connect(function(inp)
 			if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
-				resizing = true; startInput = inp.Position; startSize = holder.AbsoluteSize; startAbsPos = holder.AbsolutePosition
+				-- AbsoluteSize includes the mobile UIScale; Size offsets don't, so divide it out
+				resizing = true; startInput = inp.Position; startSize = holder.AbsoluteSize / uiScale.Scale; startAbsPos = holder.AbsolutePosition
 			end
 		end)
 		self._track(UserInputService.InputChanged:Connect(function(inp)
 			if resizing and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
-				local d = inp.Position - startInput
-				local newW = clamp(startSize.X + d.X, minW, maxW)
-				local newH = clamp(startSize.Y + d.Y, minH, maxH)
+				local s = uiScale.Scale
+				local d = (inp.Position - startInput) / s
+				-- never let the bottom-right corner go past the screen edge
+				local vp = workspace.CurrentCamera.ViewportSize
+				local capW = math.max(minW, math.min(maxW, (vp.X - startAbsPos.X - 8) / s))
+				local capH = math.max(minH, math.min(maxH, (vp.Y - startAbsPos.Y - 8) / s))
+				local newW = math.floor(clamp(startSize.X + d.X, minW, capW))
+				local newH = math.floor(clamp(startSize.Y + d.Y, minH, capH))
+				W, H = newW, newH -- so hide/show and restore keep the new size
+				maximized = false
 				holder.Size = UDim2.fromOffset(newW, newH)
-				holder.Position = UDim2.fromOffset(startAbsPos.X + newW / 2, startAbsPos.Y + newH / 2)
+				holder.Position = UDim2.fromOffset(startAbsPos.X + newW * s / 2, startAbsPos.Y + newH * s / 2)
 			end
 		end))
 		self._track(UserInputService.InputEnded:Connect(function(inp)
@@ -855,10 +875,10 @@ function RayVinzUI:_section(page, opts)
 		local btn = new("TextButton", { Text = key and key.Name or "None", Font = FB, TextSize = 12, TextColor3 = Theme.Text, AutoButtonColor = false, Size = UDim2.fromOffset(90, 30), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), BackgroundColor3 = Theme.Field, BackgroundTransparency = 0.4 }, r); corner(btn, 9); stroke(btn, Theme.White, 0.8, 1)
 		local listening = false
 		btn.MouseButton1Click:Connect(function() listening = true btn.Text = "..." end)
-		UserInputService.InputBegan:Connect(function(input, gpe)
+		trackConn(UserInputService.InputBegan:Connect(function(input, gpe)
 			if listening and input.UserInputType == Enum.UserInputType.Keyboard then key = input.KeyCode btn.Text = key.Name listening = false
 			elseif not gpe and key and input.KeyCode == key then if o.Callback then task.spawn(o.Callback) end end
-		end)
+		end))
 		local ctl = { Set = function(k) key = k; btn.Text = k and k.Name or "None" end, Get = function() return key end }
 		registerFlag(o, ctl, "keybind"); return ctl
 	end
@@ -877,14 +897,17 @@ function RayVinzUI:_section(page, opts)
 		new("UIGradient", { Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, Color3.fromHSV(0, 1, 1)), ColorSequenceKeypoint.new(0.17, Color3.fromHSV(0.17, 1, 1)), ColorSequenceKeypoint.new(0.33, Color3.fromHSV(0.33, 1, 1)), ColorSequenceKeypoint.new(0.5, Color3.fromHSV(0.5, 1, 1)), ColorSequenceKeypoint.new(0.67, Color3.fromHSV(0.67, 1, 1)), ColorSequenceKeypoint.new(0.83, Color3.fromHSV(0.83, 1, 1)), ColorSequenceKeypoint.new(1, Color3.fromHSV(1, 1, 1)) }) }, hue)
 		local function refresh(fire) color = Color3.fromHSV(h, s, v) sw.BackgroundColor3 = color sv.BackgroundColor3 = Color3.fromHSV(h, 1, 1) if fire ~= false and o.Callback then task.spawn(o.Callback, color) end end
 		local ds, dh = false, false
-		sv.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then ds = true end end)
-		hue.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then dh = true end end)
-		UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then ds = false dh = false end end)
-		UserInputService.InputChanged:Connect(function(i)
-			if i.UserInputType ~= Enum.UserInputType.MouseMovement then return end
-			if ds then s = clamp((i.Position.X - sv.AbsolutePosition.X) / math.max(sv.AbsoluteSize.X, 1), 0, 1) v = 1 - clamp((i.Position.Y - sv.AbsolutePosition.Y) / math.max(sv.AbsoluteSize.Y, 1), 0, 1) refresh() end
-			if dh then h = clamp((i.Position.X - hue.AbsolutePosition.X) / math.max(hue.AbsoluteSize.X, 1), 0, 1) refresh() end
-		end)
+		local function isPress(i) return i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch end
+		local function pick(p)
+			if ds then s = clamp((p.X - sv.AbsolutePosition.X) / math.max(sv.AbsoluteSize.X, 1), 0, 1) v = 1 - clamp((p.Y - sv.AbsolutePosition.Y) / math.max(sv.AbsoluteSize.Y, 1), 0, 1) refresh() end
+			if dh then h = clamp((p.X - hue.AbsolutePosition.X) / math.max(hue.AbsoluteSize.X, 1), 0, 1) refresh() end
+		end
+		sv.InputBegan:Connect(function(i) if isPress(i) then ds = true pick(i.Position) end end)
+		hue.InputBegan:Connect(function(i) if isPress(i) then dh = true pick(i.Position) end end)
+		trackConn(UserInputService.InputEnded:Connect(function(i) if isPress(i) then ds = false dh = false end end))
+		trackConn(UserInputService.InputChanged:Connect(function(i)
+			if i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch then pick(i.Position) end
+		end))
 		sw.MouseButton1Click:Connect(function() pop.Position = UDim2.fromOffset(sw.AbsolutePosition.X - 160, sw.AbsolutePosition.Y + 30) pop.Visible = not pop.Visible end)
 		refresh(false)
 		local ctl = { Set = function(c) h, s, v = c:ToHSV() refresh() end, Get = function() return color end }
@@ -1280,7 +1303,7 @@ function RayVinzUI:SetAccent(color, color2)
 	if type(color) == "string" then local p = RayVinzUI.AccentPresets[color]; if p then color, color2 = p[1], p[2] end end
 	Theme.Accent = color or Theme.Accent
 	Theme.Accent2 = color2 or Theme.Accent2
-	applyThemeRegistry() -- direct role -> instance replay; no color-matching, so no drift even under rapid/looped calls
+	applyThemeRegistry({ Accent = true, Accent2 = true })
 	return self
 end
 -- full theme presets + live theme swap (not just accent)
@@ -1420,6 +1443,8 @@ end
 function RayVinzUI:Unload()
 	for _, c in ipairs(self._conns or {}) do pcall(function() c:Disconnect() end) end
 	self._conns = {}
+	-- destroyed descendants keep their Parent, so drop the theme bindings explicitly
+	table.clear(ThemeRegistry); table.clear(ThemeGradients)
 	if self._blur then pcall(function() self._blur:Destroy() end) end
 	pcall(function() if self.Gui then self.Gui:Destroy() end end)
 	pcall(function()

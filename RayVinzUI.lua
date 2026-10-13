@@ -1728,7 +1728,13 @@ function RayVinzUI:KeySystem(o)
 		if ok then
 			statusVal.Text = msg or "Key valid"; statusVal.TextColor3 = Theme.Green
 			tween(fieldStroke, 0.2, { Color = Theme.Green, Transparency = 0.2 })
-			if o.SaveKey and writefile then pcall(writefile, saveFile, key) end
+			if o.SaveKey and writefile then
+				pcall(function()
+					local dir = saveFile:match("^(.*)/[^/]*$")
+					if dir and makefolder and isfolder and not isfolder(dir) then makefolder(dir) end
+					writefile(saveFile, key)
+				end)
+			end
 			acceptedKey, acceptedSvc = key, svc
 			task.delay(0.6, function() close(true) end)
 		else

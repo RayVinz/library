@@ -265,6 +265,8 @@ function RayVinzUI:CreateWindow(opts)
 	local blur = nil
 	pcall(function() blur = new("BlurEffect", { Name = "RayVinzBlur", Size = 0, Enabled = true }, game:GetService("Lighting")) end)
 	self._blur = blur
+	-- opts.Blur = false turns the background blur off, a number sets its strength (default 24)
+	self._blurSize = opts.Blur == false and 0 or (type(opts.Blur) == "number" and opts.Blur or 24)
 	local holder = new("Frame", { Name = "Window", Visible = false, Size = UDim2.fromOffset(W, H), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1 }, gui)
 	self.Window = holder
 	local sh = shadow(holder, 1, 48)
@@ -288,7 +290,7 @@ function RayVinzUI:CreateWindow(opts)
 	-- smooth open / close / minimize (scale + fade together, from the window's own center)
 	local function showWin(animate)
 		holder.Visible = true
-		if blur then tween(blur, 0.34, { Size = 24 }) end
+		if blur then tween(blur, 0.34, { Size = self._blurSize }) end
 		if animate then
 			win.GroupTransparency = 1; sh.ImageTransparency = 1
 			holder.Size = UDim2.fromOffset(math.floor(W * 0.9), math.floor(H * 0.9))
@@ -540,7 +542,7 @@ function RayVinzUI:CreateWindow(opts)
 	end
 	if opts.Loading then
 		local lo = type(opts.Loading) == "table" and opts.Loading or {}
-		local loader = self:Loading({ Title = lo.Title or opts.Title or "RayVinz Hub", SubTitle = lo.SubTitle or "Loading assets...", Logo = opts.Logo })
+		local loader = self:Loading({ Title = lo.Title or opts.Title or "RayVinz Hub", SubTitle = lo.SubTitle or "Loading assets...", Logo = opts.Logo, Blur = opts.Blur })
 		task.delay(lo.Duration or 2, function() loader.Close() task.wait(0.25) showWin(true) afterReady() end)
 	else
 		showWin(true)
@@ -1383,8 +1385,10 @@ function RayVinzUI:Loading(o)
 	local gui = self.Gui or ActiveGui
 	-- frosted glass loader: blur the scene + a translucent glass card
 	local lblur = nil
-	pcall(function() lblur = new("BlurEffect", { Name = "RayVinzBlur", Size = 0, Enabled = true }, game:GetService("Lighting")) end)
-	if lblur then tween(lblur, 0.3, { Size = 22 }) end
+	if o.Blur ~= false then
+		pcall(function() lblur = new("BlurEffect", { Name = "RayVinzBlur", Size = 0, Enabled = true }, game:GetService("Lighting")) end)
+		if lblur then tween(lblur, 0.3, { Size = type(o.Blur) == "number" and o.Blur or 22 }) end
+	end
 	local overlay = new("Frame", { Name = "Loading", Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, ZIndex = 90 }, gui)
 	tween(overlay, 0.25, { BackgroundTransparency = 0.35 })
 	local card = new("CanvasGroup", { Size = UDim2.fromOffset(292, 74), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = Color3.fromRGB(26, 26, 30), BackgroundTransparency = 0.28, GroupTransparency = 1, ClipsDescendants = true, ZIndex = 91 }, overlay); corner(card, 16); stroke(card, Theme.White, 0.68, 1.2); glassSheen(card, 16, 1)
@@ -1562,6 +1566,13 @@ function RayVinzUI:Unload()
 	pcall(function()
 		for _, e in ipairs(game:GetService("Lighting"):GetChildren()) do if e.Name == "RayVinzBlur" then e:Destroy() end end
 	end)
+end
+
+-- Window:SetBlur(false) / SetBlur(true) / SetBlur(12): change the background blur live
+function RayVinzUI:SetBlur(v)
+	self._blurSize = v == false and 0 or (type(v) == "number" and v or 24)
+	if self._blur and self.Window and self.Window.Visible then tween(self._blur, 0.25, { Size = self._blurSize }) end
+	return self
 end
 
 -- ================= Anti-AFK / reopen after teleport =================
@@ -1755,8 +1766,11 @@ function RayVinzUI:KeySystem(o)
 		for _, p in ipairs({ guiParent() }) do local old = p:FindFirstChild("RayVinzKey") if old then old:Destroy() end end
 	end)
 	local gui = new("ScreenGui", { Name = "RayVinzKey", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true, DisplayOrder = 100 }, guiParent())
-	local blur; pcall(function() blur = new("BlurEffect", { Name = "RayVinzBlur", Size = 0 }, game:GetService("Lighting")) end)
-	if blur then tween(blur, 0.3, { Size = 20 }) end
+	local blur
+	if o.Blur ~= false then
+		pcall(function() blur = new("BlurEffect", { Name = "RayVinzBlur", Size = 0 }, game:GetService("Lighting")) end)
+		if blur then tween(blur, 0.3, { Size = type(o.Blur) == "number" and o.Blur or 20 }) end
+	end
 
 	local W, H = 640, 340
 	local holder = new("Frame", { Size = UDim2.fromOffset(math.floor(W * 0.94), math.floor(H * 0.94)), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1 }, gui)

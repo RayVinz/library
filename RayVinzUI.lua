@@ -223,6 +223,13 @@ end
 -- ---------- Window ----------
 function RayVinzUI:CreateWindow(opts)
 	opts = opts or {}
+	-- WindUI-style: CreateWindow({ KeySystem = { API = {...} } }) gates the window behind a key
+	if opts.KeySystem then
+		local ks = opts.KeySystem
+		if ks.Title == nil then ks.Title = opts.Title end
+		if ks.Logo == nil then ks.Logo = opts.Logo end
+		if not RayVinzUI.KeySystem(self, ks) then error("[RayVinzUI] key system closed without a valid key", 0) end
+	end
 	opts.Logo = opts.Logo or "sparkles" -- default hub icon (needs UI:LoadLucide())
 	opts.Version = opts.Version or opts.SubTitle or "v1.0.0"
 	-- no Title given -> auto-pull the current game's name
@@ -1413,23 +1420,148 @@ end
 --       SupportedGames = { [1234567] = true },          -- optional, by PlaceId
 --       Links = { { Title = "Discord", Content = "discord.gg/xxx", Icon = "message-circle" } },
 --       SaveKey = true,                                 -- remember a working key
+--       API = {                                         -- or let a key service check it:
+--           { Type = "luarmor", ScriptId = "...", KeyLink = "https://...", LoadScript = true },
+--           { Type = "luaprot", ScriptId = "...", KeyLink = "https://luaprot.net/ad/...", LoadScript = true },
+--           { Type = "pandadevelopment", ServiceId = "..." },
+--           { Type = "junkiedevelopment", ServiceId = "...", ApiKey = "...", Provider = "..." },
+--           { Type = "custom", Name = "LuaProt", Verify = function(key) ... end, Link = "https://..." },
+--       },
 --   })
 --   if not ok then return end
+
+-- Key services. Each returns { Name, Verify(key) -> valid, message, Link() -> url, OnValid(key)? }
+local KeyServices = {}
+local function hwid()
+	local ok, h = pcall(function() return gethwid and gethwid() end)
+	return tostring((ok and h) or LocalPlayer.UserId)
+end
+KeyServices.luarmor = function(cfg)
+	local api = loadstring(game:HttpGet("https://sdkapi-public.luarmor.net/library.lua"))()
+	api.script_id = cfg.ScriptId
+	return {
+		Name = "Luarmor",
+		Verify = function(key)
+			local res = api.check_key(key)
+			if res.code == "KEY_VALID" then return true, "Whitelisted!" end
+			if res.code == "KEY_HWID_LOCKED" then return false, "Key is linked to another device" end
+			if res.code == "KEY_INCORRECT" or res.code == "KEY_INVALID" then return false, "Key is wrong or deleted" end
+			return false, tostring(res.message or res.code)
+		end,
+		Link = function() return cfg.KeyLink or cfg.Discord end,
+		-- Luarmor reads the key from the script_key global
+		OnValid = function(key)
+			script_key = key
+			pcall(function() getgenv().script_key = key end)
+			if cfg.LoadScript then api.load_script() end
+		end,
+	}
+end
+KeyServices.pandadevelopment = function(cfg)
+	local http = game:GetService("HttpService")
+	local req = request or http_request or (syn and syn.request)
+	local service = http:UrlEncode(tostring(cfg.ServiceId))
+	return {
+		Name = "Panda Development",
+		Verify = function(key)
+			if not req then return false, "Your executor has no request()" end
+			local ok, res = pcall(req, { Url = "https://pandadevelopment.net/v2_validation?key=" .. http:UrlEncode(key) .. "&service=" .. service .. "&hwid=" .. http:UrlEncode(hwid()), Method = "GET" })
+			if not ok or not res or not res.Success then return false, "Couldn't reach Panda" end
+			local ok2, data = pcall(function() return http:JSONDecode(res.Body) end)
+			if not ok2 or type(data) ~= "table" then return false, "Bad response from Panda" end
+			if data.V2_Authentication == "success" then return true, "Authenticated" end
+			return false, (data.Key_Information and data.Key_Information.Notes) or "Invalid key"
+		end,
+		Link = function() return "https://pandadevelopment.net/getkey?service=" .. service .. "&hwid=" .. http:UrlEncode(hwid()) end,
+	}
+end
+-- LuaProt key-check SDK (docs.luaprot.net -> Key Check Library). checkKey binds an unassigned key
+-- to the current HWID. ScriptId must be a string: 20-digit ids don't fit in a Lua number.
+KeyServices.luaprot = function(cfg)
+	if type(cfg.ScriptId) ~= "string" then error("LuaProt ScriptId must be a string in quotes") end
+	local sdk = loadstring(game:HttpGet("https://sdk.luaprot.net/"))()
+	sdk.scriptId = cfg.ScriptId
+	return {
+		Name = "LuaProt",
+		Verify = function(key)
+			local res = sdk:checkKey(key)
+			if type(res) ~= "table" then return false, "No response from LuaProt" end
+			if res.status == "VALID" then return true, "Key valid" end
+			return false, tostring(res.message or res.status)
+		end,
+		Link = function() return cfg.KeyLink end,
+		OnValid = function() if cfg.LoadScript then sdk:loadScript() end end,
+	}
+end
+-- Junkie's own SDK must be loaded first; it provides the JunkieProtected global
+KeyServices.junkiedevelopment = function(cfg)
+	local jp = JunkieProtected or (getgenv and getgenv().JunkieProtected)
+	if not jp then error("load the Junkie SDK before KeySystem") end
+	jp.API_KEY, jp.PROVIDER, jp.SERVICE_ID = cfg.ApiKey, cfg.Provider, cfg.ServiceId
+	return {
+		Name = "Junkie Development",
+		Verify = function(key)
+			local kl = jp.IsKeylessMode and jp.IsKeylessMode()
+			if kl and kl.keyless_mode then return true, "Keyless mode" end
+			if jp.ValidateKey({ Key = key }) == "valid" then return true, "Key is valid!" end
+			return false, "Invalid key"
+		end,
+		Link = function() return jp.GetKeyLink() end,
+	}
+end
+KeyServices.custom = function(cfg)
+	return {
+		Name = cfg.Name or cfg.Title or "Key",
+		Verify = cfg.Verify,
+		Link = function() if type(cfg.Link) == "function" then return cfg.Link() end return cfg.Link end,
+		OnValid = cfg.OnValid,
+	}
+end
+
 function RayVinzUI:KeySystem(o)
 	o = o or {}
 	local saveFile = (o.FileName or "RayVinzKey") .. ".txt"
 	local function trim(s) return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
+	local services = {}
+	for _, cfg in ipairs(o.API or {}) do
+		local make = KeyServices[string.lower(tostring(cfg.Type or "custom"))]
+		if not make then
+			warn("[RayVinzUI] unknown key service type: " .. tostring(cfg.Type))
+		else
+			local ok, svc = pcall(make, cfg)
+			if ok and svc then svc.cfg = cfg; table.insert(services, svc)
+			else warn("[RayVinzUI] key service '" .. tostring(cfg.Type) .. "' failed to start: " .. tostring(svc)) end
+		end
+	end
+	-- returns valid, message, service. Verify may return (valid, message); message goes to Status
 	local function check(key)
-		if key == "" then return false end
-		if o.Verify then local ok, r = pcall(o.Verify, key) return ok and r and true or false end
+		if key == "" then return false, "Enter a key" end
+		if #services > 0 then
+			local lastMsg
+			for _, svc in ipairs(services) do
+				local ok, valid, msg = pcall(svc.Verify, key)
+				if ok and valid then return true, msg, svc end
+				lastMsg = ok and msg or "Check failed"
+			end
+			return false, lastMsg
+		end
+		if o.Verify then
+			local ok, valid, msg = pcall(o.Verify, key)
+			if not ok then return false, "Check failed" end
+			return valid and true or false, msg
+		end
 		if o.Keys then for _, k in ipairs(o.Keys) do if k == key then return true end end end
 		return false
 	end
+	local function accepted(key, svc)
+		if svc and svc.OnValid then task.spawn(svc.OnValid, key) end
+		if o.OnSuccess then task.spawn(o.OnSuccess, key) end
+	end
 	if o.SaveKey and isfile and readfile then
 		local ok, saved = pcall(function() return isfile(saveFile) and readfile(saveFile) or nil end)
-		if ok and saved and check(trim(saved)) then
-			if o.OnSuccess then task.spawn(o.OnSuccess, trim(saved)) end
-			return true
+		if ok and saved then
+			local valid, _, svc = check(trim(saved))
+			if valid then accepted(trim(saved), svc) return true end
 		end
 	end
 
@@ -1535,7 +1667,13 @@ function RayVinzUI:KeySystem(o)
 	local links = new("ScrollingFrame", { Position = UDim2.fromOffset(0, 176), Size = UDim2.new(1, 0, 1, -176), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 0,
 		CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y }, right)
 	vlist(links, 8)
-	for i, lk in ipairs(o.Links or {}) do
+	-- one card per key service (copies that service's get-key link), then the user's own links
+	local cards = {}
+	for _, svc in ipairs(services) do
+		table.insert(cards, { Title = svc.cfg.Title or svc.Name, Content = svc.cfg.Desc or "Click to copy key link", Icon = svc.cfg.Icon or "key-round", GetLink = svc.Link })
+	end
+	for _, lk in ipairs(o.Links or {}) do table.insert(cards, lk) end
+	for i, lk in ipairs(cards) do
 		local lc = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 52), BackgroundColor3 = Theme.Card, BackgroundTransparency = 0.45, LayoutOrder = i }, links)
 		corner(lc, 12); stroke(lc, Theme.White, 0.88, 1)
 		iconImage(lc, lk.Icon or "link", UDim2.fromOffset(20, 20), Theme.Accent, UDim2.new(0, 14, 0.5, 0), Vector2.new(0, 0.5))
@@ -1544,7 +1682,10 @@ function RayVinzUI:KeySystem(o)
 		lc.MouseEnter:Connect(function() tween(lc, 0.12, { BackgroundTransparency = 0.25 }) end)
 		lc.MouseLeave:Connect(function() tween(lc, 0.12, { BackgroundTransparency = 0.45 }) end)
 		lc.MouseButton1Click:Connect(function()
-			pcall(function() setclipboard(lk.Url or lk.Content or "") end)
+			pcall(function()
+				local link = lk.GetLink and lk.GetLink() or lk.Url or lk.Content
+				if link then setclipboard(tostring(link)) end
+			end)
 			if lk.Callback then task.spawn(lk.Callback) end
 			ls.Text = "Copied to clipboard!"
 			task.delay(1.4, function() ls.Text = lk.Content or "" end)
@@ -1553,6 +1694,7 @@ function RayVinzUI:KeySystem(o)
 
 	-- ---------- behaviour ----------
 	local result = nil
+	local acceptedKey, acceptedSvc
 	local done = Instance.new("BindableEvent")
 	local function close(ok)
 		if result ~= nil then return end
@@ -1581,16 +1723,16 @@ function RayVinzUI:KeySystem(o)
 		local key = trim(box.Text)
 		busy = true; submitTxt.Text = "Checking..."
 		statusVal.Text = "Checking..."; statusVal.TextColor3 = Theme.SubText
-		local ok = check(key)
+		local ok, msg, svc = check(key)
 		busy = false; submitTxt.Text = "Submit"
 		if ok then
-			statusVal.Text = "Key valid"; statusVal.TextColor3 = Theme.Green
+			statusVal.Text = msg or "Key valid"; statusVal.TextColor3 = Theme.Green
 			tween(fieldStroke, 0.2, { Color = Theme.Green, Transparency = 0.2 })
 			if o.SaveKey and writefile then pcall(writefile, saveFile, key) end
-			if o.OnSuccess then task.spawn(o.OnSuccess, key) end
+			acceptedKey, acceptedSvc = key, svc
 			task.delay(0.6, function() close(true) end)
 		else
-			statusVal.Text = key == "" and "Enter a key" or "Invalid key"; statusVal.TextColor3 = Theme.Error
+			statusVal.Text = msg or "Invalid key"; statusVal.TextColor3 = Theme.Error
 			tween(fieldStroke, 0.2, { Color = Theme.Error, Transparency = 0.2 })
 			shake()
 			task.delay(1.2, function() if result == nil then tween(fieldStroke, 0.3, { Color = Theme.White, Transparency = 0.82 }) end end)
@@ -1599,7 +1741,12 @@ function RayVinzUI:KeySystem(o)
 	submitBtn.MouseButton1Click:Connect(function() task.spawn(submit) end)
 	box.FocusLost:Connect(function(enter) if enter then task.spawn(submit) end end)
 	getBtn.MouseButton1Click:Connect(function()
-		if o.KeyLink then pcall(function() setclipboard(o.KeyLink) end) end
+		pcall(function()
+			local link
+			if o.KeyLink then link = type(o.KeyLink) == "function" and o.KeyLink() or o.KeyLink
+			elseif services[1] then link = services[1].Link() end
+			if link then setclipboard(tostring(link)) end
+		end)
 		if o.OnGetKey then task.spawn(o.OnGetKey) end
 		getTxt.Text = "Link copied!"
 		task.delay(1.5, function() getTxt.Text = o.GetKeyText or "Get a key" end)
@@ -1623,6 +1770,7 @@ function RayVinzUI:KeySystem(o)
 
 	done.Event:Wait()
 	done:Destroy()
+	if result == true then accepted(acceptedKey, acceptedSvc) end
 	return result == true
 end
 

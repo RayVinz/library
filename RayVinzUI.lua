@@ -223,6 +223,8 @@ end
 -- ---------- Window ----------
 function RayVinzUI:CreateWindow(opts)
 	opts = opts or {}
+	if opts.Folder then RayVinzUI.SetFolder(self, opts.Folder) end
+	if opts.KeySystem and opts.Folder and opts.KeySystem.Folder == nil then opts.KeySystem.Folder = opts.Folder end
 	-- WindUI-style: CreateWindow({ KeySystem = { API = {...} } }) gates the window behind a key
 	if opts.KeySystem then
 		local ks = opts.KeySystem
@@ -1322,6 +1324,20 @@ function RayVinzUI:Changelog(o)
 	})
 end
 
+-- ================= Hub folder (configs + saved key) =================
+-- Every file the library writes goes in workspace/<HubFolder>/. Set it with
+-- CreateWindow({ Folder = "MyHub" }), KeySystem({ Folder = "MyHub" }) or UI:SetFolder("MyHub").
+local HubFolder = "RayVinz"
+local function ensureFolder()
+	if makefolder and isfolder and not isfolder(HubFolder) then makefolder(HubFolder) end
+end
+function RayVinzUI:SetFolder(name)
+	name = tostring(name or ""):gsub('[\\/:*?"<>|]', ""):gsub("^%s+", ""):gsub("%s+$", "")
+	if name ~= "" then HubFolder = name end
+	return self
+end
+function RayVinzUI:GetFolder() return HubFolder end
+
 -- ================= Config (save / load element values by Flag) =================
 -- Give elements a Flag = "unique_name", then UI:SaveConfig() / UI:LoadConfig()
 function RayVinzUI:SaveConfig(name)
@@ -1337,8 +1353,8 @@ function RayVinzUI:SaveConfig(name)
 		end
 	end
 	local ok = pcall(function()
-		if makefolder and isfolder and not isfolder("RayVinz") then makefolder("RayVinz") end
-		writefile("RayVinz/" .. name .. ".json", game:GetService("HttpService"):JSONEncode(data))
+		ensureFolder()
+		writefile(HubFolder .. "/" .. name .. ".json", game:GetService("HttpService"):JSONEncode(data))
 	end)
 	return ok
 end
@@ -1347,7 +1363,7 @@ function RayVinzUI:LoadConfig(name)
 	self._loading = true -- suppress auto-save while applying values (so it can't overwrite with defaults)
 	task.delay(0.8, function() self._loading = false end)
 	if type(readfile) ~= "function" or type(isfile) ~= "function" then return false end
-	local path = "RayVinz/" .. name .. ".json"
+	local path = HubFolder .. "/" .. name .. ".json"
 	if not isfile(path) then return false end
 	local ok, data = pcall(function() return game:GetService("HttpService"):JSONDecode(readfile(path)) end)
 	if not ok or type(data) ~= "table" then return false end
@@ -1361,12 +1377,12 @@ function RayVinzUI:LoadConfig(name)
 	end
 	return true
 end
--- list saved config names (files in the RayVinz folder)
+-- list saved config names (files in the hub folder)
 function RayVinzUI:ListConfigs()
 	local out = {}
 	pcall(function()
-		if type(listfiles) == "function" and isfolder and isfolder("RayVinz") then
-			for _, f in ipairs(listfiles("RayVinz")) do
+		if type(listfiles) == "function" and isfolder and isfolder(HubFolder) then
+			for _, f in ipairs(listfiles(HubFolder)) do
 				local nm = tostring(f):match("([^/\\]+)%.json$")
 				if nm and nm ~= "_autoload" then table.insert(out, nm) end
 			end
@@ -1376,19 +1392,19 @@ function RayVinzUI:ListConfigs()
 end
 function RayVinzUI:DeleteConfig(name)
 	if not name or name == "" then return false end
-	return (pcall(function() if delfile and isfile and isfile("RayVinz/" .. name .. ".json") then delfile("RayVinz/" .. name .. ".json") end end))
+	return (pcall(function() if delfile and isfile and isfile(HubFolder .. "/" .. name .. ".json") then delfile(HubFolder .. "/" .. name .. ".json") end end))
 end
 function RayVinzUI:SetAutoLoadConfig(name)
 	pcall(function()
-		if makefolder and isfolder and not isfolder("RayVinz") then makefolder("RayVinz") end
-		if name and name ~= "" and type(writefile) == "function" then writefile("RayVinz/_autoload.txt", name)
-		elseif delfile and isfile and isfile("RayVinz/_autoload.txt") then delfile("RayVinz/_autoload.txt") end
+		ensureFolder()
+		if name and name ~= "" and type(writefile) == "function" then writefile(HubFolder .. "/_autoload.txt", name)
+		elseif delfile and isfile and isfile(HubFolder .. "/_autoload.txt") then delfile(HubFolder .. "/_autoload.txt") end
 	end)
 	return self
 end
 function RayVinzUI:GetAutoLoadConfig()
 	local name
-	pcall(function() if isfile and isfile("RayVinz/_autoload.txt") and readfile then name = readfile("RayVinz/_autoload.txt") end end)
+	pcall(function() if isfile and isfile(HubFolder .. "/_autoload.txt") and readfile then name = readfile(HubFolder .. "/_autoload.txt") end end)
 	if name == "" then name = nil end
 	return name
 end
@@ -1420,6 +1436,7 @@ end
 --       SupportedGames = { [1234567] = true },          -- optional, by PlaceId
 --       Links = { { Title = "Discord", Content = "discord.gg/xxx", Icon = "message-circle" } },
 --       SaveKey = true,                                 -- remember a working key
+--       Folder = "MyHub", FileName = "key",             -- saves to workspace/MyHub/key.txt
 --       API = {                                         -- or let a key service check it:
 --           { Type = "luarmor", ScriptId = "...", KeyLink = "https://...", LoadScript = true },
 --           { Type = "luaprot", ScriptId = "...", KeyLink = "https://luaprot.net/ad/...", LoadScript = true },
@@ -1520,7 +1537,10 @@ end
 
 function RayVinzUI:KeySystem(o)
 	o = o or {}
-	local saveFile = (o.FileName or "RayVinzKey") .. ".txt"
+	if o.Folder then RayVinzUI.SetFolder(self, o.Folder) end
+	-- key file: <Folder>/<FileName>.txt. A FileName containing "/" is used as a full path.
+	local fname = o.FileName or "key"
+	local saveFile = (string.find(fname, "/", 1, true) and fname or (HubFolder .. "/" .. fname)) .. ".txt"
 	local function trim(s) return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
 	local services = {}
 	for _, cfg in ipairs(o.API or {}) do

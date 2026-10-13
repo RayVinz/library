@@ -1995,7 +1995,7 @@ function RayVinzUI:AntiSpy(o)
 	local removeGui = o.RemoveGui ~= false
 	local doKick = o.Kick ~= false
 	local doDetectHooks = o.DetectHooks == true -- OFF by default: IY / executors hook metamethods too (false positives)
-	local kickMsg = o.KickMessage or "remote spy detected\nไม่ได้แดกกูหรอกควาย"
+	local kickMsg = o.KickMessage or "Close your remote spy and rejoin."
 	local spyNames = {
 		"simplespy", "hydroxide", "remotespy", "remote-spy", "cobalt",
 		"utopiaspy", "remotelogger", "octospy", "turtlespy",
@@ -2065,10 +2065,38 @@ function RayVinzUI:AntiSpy(o)
 		if ok3 and idx and not iscclosure(idx) then table.insert(reasons, "__index hooked") end
 		return reasons
 	end
+	-- Roblox's kick screen always shows "Disconnected" plus a moderator line before our text.
+	-- Executors can reach CoreGui, so rewrite its labels to show only our title + message.
+	-- o.KickTitle = false keeps Roblox's normal screen.
+	local function restyleKickScreen()
+		if o.KickTitle == false then return end
+		local title = o.KickTitle or "Remote Spy Detected"
+		task.spawn(function()
+			local ok, prompt = pcall(function()
+				return game:GetService("CoreGui"):WaitForChild("RobloxPromptGui", 5):WaitForChild("promptOverlay", 5):WaitForChild("ErrorPrompt", 5)
+			end)
+			if not ok or not prompt then return end
+			-- Roblox can set the text a moment after the prompt appears, so apply it a few times
+			for _ = 1, 20 do
+				pcall(function()
+					for _, d in ipairs(prompt:GetDescendants()) do
+						if d:IsA("TextLabel") then
+							if d.Name == "ErrorTitle" then d.Text = title
+							elseif d.Name == "ErrorMessage" then d.Text = kickMsg end
+						end
+					end
+				end)
+				task.wait(0.1)
+			end
+		end)
+	end
 	local function react(reasons)
 		pcall(function() warn("[RayVinz] spy detected: " .. table.concat(reasons, ", ")) end)
 		if o.Callback then pcall(o.Callback, reasons) end
-		if doKick then pcall(function() LocalPlayer:Kick(kickMsg) end) end
+		if doKick then
+			pcall(function() LocalPlayer:Kick(kickMsg) end)
+			restyleKickScreen()
+		end
 	end
 	pcall(function() warn("[RayVinz] AntiSpy active (kick=" .. tostring(doKick) .. ", hooks=" .. tostring(doDetectHooks) .. ")") end)
 	task.spawn(function()

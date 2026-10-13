@@ -1334,6 +1334,7 @@ end
 function RayVinzUI:SetFolder(name)
 	name = tostring(name or ""):gsub('[\\/:*?"<>|]', ""):gsub("^%s+", ""):gsub("%s+$", "")
 	if name ~= "" then HubFolder = name end
+	pcall(ensureFolder)
 	return self
 end
 function RayVinzUI:GetFolder() return HubFolder end

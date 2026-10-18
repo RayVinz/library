@@ -3,20 +3,20 @@
 -- 1) upload each craft_N.png to Roblox  2) paste its asset id into S below (in order)
 -- 3) UI:SetIcons(loadstring(game:HttpGet("<raw url of this file>"))())
 local S = {
-	"rbxassetid://116192991342913", -- craft_1.png
-	"rbxassetid://97827085798766", -- craft_2.png
-	"rbxassetid://115955287713772", -- craft_3.png
-	"rbxassetid://93948715046457", -- craft_4.png
-	"rbxassetid://134779686620287", -- craft_5.png
-	"rbxassetid://96664756563396", -- craft_6.png
-	"rbxassetid://78690979134422", -- craft_7.png
-	"rbxassetid://97526914200128", -- craft_8.png
-	"rbxassetid://118967941642950", -- craft_9.png
-	"rbxassetid://118164087924616", -- craft_10.png
-	"rbxassetid://129082580317898", -- craft_11.png
-	"rbxassetid://104480141317374", -- craft_12.png
-	"rbxassetid://112767506995326", -- craft_13.png
-	"rbxassetid://122271995076530", -- craft_14.png
+	"rbxassetid://109470166436227", -- craft_1.png
+	"rbxassetid://87154831231974", -- craft_2.png
+	"rbxassetid://120972918386010", -- craft_3.png
+	"rbxassetid://113627505844965", -- craft_4.png
+	"rbxassetid://115186347714797", -- craft_5.png
+	"rbxassetid://132205006768925", -- craft_6.png
+	"rbxassetid://101652398005222", -- craft_7.png
+	"rbxassetid://82934788473337", -- craft_8.png
+	"rbxassetid://72148802747231", -- craft_9.png
+	"rbxassetid://133049053925067", -- craft_10.png
+	"rbxassetid://93003174061808", -- craft_11.png
+	"rbxassetid://100957167360968", -- craft_12.png
+	"rbxassetid://107963517584610", -- craft_13.png
+	"rbxassetid://100744313526432", -- craft_14.png
 }
 local SZ = Vector2.new(48, 48)
 local P = {}

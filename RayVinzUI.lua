@@ -36,6 +36,33 @@ local FB = Enum.Font.GothamBold   -- titles / values
 local function clamp(x, a, b) if x < a then return a elseif x > b then return b else return x end end
 local function round(n, d) if d == nil then return math.floor(n + 0.5) end local m = 10 ^ d return math.floor(n * m + 0.5) / m end
 local function indexOf(t, v) for i, x in ipairs(t) do if x == v then return i end end return nil end
+-- base64 (for shareable config / theme "profile codes" — no executor funcs needed)
+local b64c = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+local function b64encode(data)
+	return ((data:gsub(".", function(x)
+		local r, b = "", x:byte()
+		for i = 8, 1, -1 do r = r .. (b % 2 ^ i - b % 2 ^ (i - 1) > 0 and "1" or "0") end
+		return r
+	end) .. "0000"):gsub("%d%d%d?%d?%d?%d?", function(x)
+		if #x < 6 then return "" end
+		local c = 0
+		for i = 1, 6 do c = c + (x:sub(i, i) == "1" and 2 ^ (6 - i) or 0) end
+		return b64c:sub(c + 1, c + 1)
+	end) .. ({ "", "==", "=" })[#data % 3 + 1])
+end
+local function b64decode(data)
+	data = tostring(data):gsub("[^" .. b64c .. "=]", "")
+	return (data:gsub("=", ""):gsub(".", function(x)
+		local r, f = "", (b64c:find(x) - 1)
+		for i = 6, 1, -1 do r = r .. (f % 2 ^ i - f % 2 ^ (i - 1) > 0 and "1" or "0") end
+		return r
+	end):gsub("%d%d%d?%d?%d?%d?%d?%d?", function(x)
+		if #x ~= 8 then return "" end
+		local c = 0
+		for i = 1, 8 do c = c + (x:sub(i, i) == "1" and 2 ^ (8 - i) or 0) end
+		return string.char(c)
+	end))
+end
 
 -- ================= live retheme registry =================
 -- Instead of scanning the tree later and guessing which elements used to be
@@ -109,7 +136,13 @@ local function ltext(parent, text, size, color, font, xAlign)
 		TextTruncate = Enum.TextTruncate.AtEnd, RichText = true }, parent)
 end
 
-local function tween(i, t, props) local tw = TweenService:Create(i, TweenInfo.new(t, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), props) tw:Play() return tw end
+-- MotionScale multiplies every tween duration. 0 = apply instantly (ReduceMotion /
+-- PerformanceGuard pause animations when the game is lagging). 1 = normal speed.
+local MotionScale = 1
+local function tween(i, t, props)
+	if MotionScale <= 0 then for k, v in pairs(props) do pcall(function() i[k] = v end) end return { Cancel = function() end, Play = function() end } end
+	local tw = TweenService:Create(i, TweenInfo.new(t * MotionScale, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), props) tw:Play() return tw
+end
 
 local function draggable(handle, target)
 	local dragging, sp, si
@@ -594,8 +627,16 @@ function RayVinzUI:Tab(opts)
 	local ic = iconImage(item, opts.Icon, UDim2.fromOffset(16, 16), Theme.SubText, UDim2.new(0, 12, 0.5, 0), Vector2.new(0, 0.5)); ic.ZIndex = 2
 	local lb = ltext(item, opts.Title or "Tab", 13, Theme.SubText, FM); lb.Position = UDim2.new(0, 38, 0, 0); lb.Size = UDim2.new(1, -48, 1, 0); lb.ZIndex = 2
 	local dot = new("Frame", { Name = "Dot", Size = UDim2.fromOffset(7, 7), Position = UDim2.new(1, -10, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), BackgroundColor3 = Theme.Error, BorderSizePixel = 0, Visible = false, ZIndex = 3 }, item); corner(dot, 4)
-	tab._bar = tbar; tab._dot = dot
+	-- badge: a small accent pill with a number/text on the right of the tab (like unread counts)
+	local badge = new("Frame", { Name = "Badge", Size = UDim2.fromOffset(18, 16), Position = UDim2.new(1, -8, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), BackgroundColor3 = Theme.Accent, Visible = false, ZIndex = 3 }, item); corner(badge, 8)
+	local badgeTxt = ltext(badge, "", 10, Theme.AccentText, FB, Enum.TextXAlignment.Center); badgeTxt.Size = UDim2.fromScale(1, 1); badgeTxt.ZIndex = 4
+	tab._bar = tbar; tab._dot = dot; tab._badge = badge
 	function tab:SetDot(on) self._dot.Visible = on and true or false end
+	function tab:SetBadge(v)
+		if v == nil or v == false or v == "" then self._badge.Visible = false; return end
+		badgeTxt.Text = tostring(v); self._badge.Visible = true
+		self._badge.Size = UDim2.fromOffset(math.max(18, #tostring(v) * 7 + 10), 16)
+	end
 	local page = new("ScrollingFrame", { Name = "Page", Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false,
 		ScrollBarThickness = 3, ScrollBarImageColor3 = Theme.Muted, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y }, self.Content)
 	pad(page, 18, 18, 18, 18); vlist(page, 16)
@@ -629,6 +670,7 @@ function RayVinzUI:_section(page, opts)
 	local autoN = 0
 	-- register an element for Config. Uses o.Flag, or auto-generates "Section/Title" so
 	-- EVERY element is saved by default (set opts.AutoFlag = false to require explicit Flags).
+	local attachMenu, attachDepends -- forward-declared (defined after tip)
 	local function registerFlag(o, ctl, kind)
 		autoN = autoN + 1
 		local flag = o.Flag
@@ -636,13 +678,29 @@ function RayVinzUI:_section(page, opts)
 			flag = (opts.Title or "Section") .. "/" .. (o.Title or ("item" .. autoN))
 			if wflags[flag] then flag = flag .. "#" .. autoN end
 		end
-		if flag then wflags[flag] = { ctl = ctl, kind = kind } end
+		local entry = { ctl = ctl, kind = kind, title = o.Title, section = opts.Title, page = page, inst = section._lastRow, default = o.Default }
+		if flag then entry.flag = flag; wflags[flag] = entry end
+		win._flagByO = win._flagByO or setmetatable({}, { __mode = "k" })
+		win._flagByO[o] = entry
+		pcall(function() entry.value = ctl.Get() end)
+		win._controls = win._controls or {}; table.insert(win._controls, entry) -- for Spotlight
+		if attachMenu then attachMenu(entry) end        -- right-click: Reset / Copy
+		if o.DependsOn and attachDepends then attachDepends(o, entry) end
+		return entry
 	end
-	-- wrap an element's callback so a change also triggers auto-save (if enabled)
+	-- wrap a callback: auto-save on change + catch errors (Error Inspector) + record Undo history
 	local function autoCb(o)
-		if not win._queueSave then return end
 		local cb = o.Callback
-		o.Callback = function(...) if cb then cb(...) end win._queueSave() end
+		o.Callback = function(...)
+			local first = (...)
+			if cb then
+				local ok, err = pcall(cb, ...)
+				if not ok then pcall(function() win:_reportError(o.Title or "element", err) end) end
+			end
+			if win._queueSave then win._queueSave() end
+			local ent = win._flagByO and win._flagByO[o]
+			if ent and not win._applyingHistory then pcall(function() win:_pushHistory(ent, first) end) end
+		end
 	end
 	-- hover tooltip (parented to the ScreenGui so it escapes the card's clip)
 	local function tip(guiObj, text)
@@ -655,6 +713,86 @@ function RayVinzUI:_section(page, opts)
 			local ap = guiObj.AbsolutePosition; box.Position = UDim2.fromOffset(ap.X, ap.Y - 30)
 		end)
 		guiObj.MouseLeave:Connect(function() if box then box:Destroy(); box = nil end end)
+	end
+	-- right-click / long-press context menu on a saved control row: Reset to default + Copy value
+	attachMenu = function(entry)
+		local r = entry.inst
+		if not r then return end
+		local menu, catch
+		local function close() if menu then menu:Destroy(); menu = nil end if catch then catch:Destroy(); catch = nil end end
+		local function open(x, y)
+			close()
+			catch = new("TextButton", { Name = "CtxCatch", Text = "", AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 89 }, section._gui)
+			catch.MouseButton1Click:Connect(close)
+			menu = new("Frame", { Name = "CtxMenu", BackgroundColor3 = Theme.Elevated, BackgroundTransparency = 0.05, Size = UDim2.fromOffset(152, 0), AutomaticSize = Enum.AutomaticSize.Y, Position = UDim2.fromOffset(x, y), ZIndex = 90 }, section._gui)
+			corner(menu, 10); stroke(menu, Theme.White, 0.75, 1); pad(menu, 5, 5, 5, 5); vlist(menu, 2)
+			local function item(txt, icon, fn)
+				local b = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = Theme.Accent, BackgroundTransparency = 1, ZIndex = 91 }, menu); corner(b, 7)
+				iconImage(b, icon, UDim2.fromOffset(14, 14), Theme.SubText, UDim2.new(0, 8, 0.5, 0), Vector2.new(0, 0.5)).ZIndex = 92
+				local l = ltext(b, txt, 12, Theme.Text, FM); l.Position = UDim2.new(0, 30, 0, 0); l.Size = UDim2.new(1, -36, 1, 0); l.ZIndex = 92
+				b.MouseEnter:Connect(function() b.BackgroundTransparency = 0.85 end)
+				b.MouseLeave:Connect(function() b.BackgroundTransparency = 1 end)
+				b.MouseButton1Click:Connect(function() pcall(fn); close() end)
+			end
+			if entry.default ~= nil then item("Reset to default", "rotate-ccw", function() entry.ctl.Set(entry.default) end) end
+			item("Copy value", "copy", function()
+				local ok, v = pcall(entry.ctl.Get); local s = ok and v or ""
+				if typeof and typeof(s) == "Color3" then s = string.format("%d, %d, %d", math.floor(s.R * 255 + 0.5), math.floor(s.G * 255 + 0.5), math.floor(s.B * 255 + 0.5))
+				elseif type(s) == "table" then s = table.concat(s, ", ")
+				elseif type(s) ~= "string" then s = tostring(s) end
+				pcall(function() if setclipboard then setclipboard(s) end end)
+				win:Notify({ Title = "Copied", Content = entry.title or "value", Type = "Info", Icon = "copy", Duration = 2 })
+			end)
+		end
+		r.InputBegan:Connect(function(inp)
+			if inp.UserInputType == Enum.UserInputType.MouseButton2 then
+				open(inp.Position.X, inp.Position.Y)
+			elseif inp.UserInputType == Enum.UserInputType.Touch then
+				local held = true
+				inp.Changed:Connect(function() if inp.UserInputState == Enum.UserInputState.End then held = false end end)
+				task.delay(0.45, function() if held then open(inp.Position.X, inp.Position.Y) end end)
+			end
+		end)
+	end
+	-- DependsOn: grey-out (or hide) a control until a master control's value matches.
+	--   o.DependsOn = "OtherFlag"                         -- enabled while that flag is truthy
+	--   o.DependsOn = { Flag = "aim", Value = true }      -- enabled only when aim == true
+	--   o.DependsOn = { Flag = "mode", Predicate = fn, Hide = true }
+	attachDepends = function(o, entry)
+		local d = o.DependsOn
+		if type(d) == "string" then d = { Flag = d } end
+		local r = entry.inst
+		if not r or type(d) ~= "table" then return end
+		local cover
+		local function master()
+			if d.Ctl and d.Ctl.Get then local ok, v = pcall(d.Ctl.Get); return ok and v end
+			if d.Flag then local e = wflags[d.Flag]; if e then local ok, v = pcall(e.ctl.Get); return ok and v end end
+			return nil
+		end
+		local function test(v)
+			if d.Predicate then local ok, r2 = pcall(d.Predicate, v); return (ok and r2) and true or false end
+			if d.Value ~= nil then return v == d.Value end
+			return v and true or false
+		end
+		local function apply(enabled)
+			if d.Hide then r.Visible = enabled; return end
+			if enabled then if cover then cover.Visible = false end
+			else
+				if not cover then cover = new("TextButton", { Name = "DepCover", Text = "", AutoButtonColor = false, BackgroundColor3 = Theme.Card, BackgroundTransparency = 0.45, Size = UDim2.fromScale(1, 1), ZIndex = 20, Active = true }, r); corner(cover, 10) end
+				cover.Visible = true
+			end
+		end
+		local state
+		win._depends = win._depends or {}
+		table.insert(win._depends, function() local en = test(master()); if en ~= state then state = en; apply(en) end end)
+		if not win._depStarted then
+			win._depStarted = true
+			local acc, trk = 0, (win._track or function(c) return c end)
+			trk(game:GetService("RunService").Heartbeat:Connect(function(dt)
+				acc = acc + dt; if acc < 0.15 then return end; acc = 0
+				for _, f in ipairs(win._depends or {}) do pcall(f) end
+			end))
+		end
 	end
 	local chev
 	if opts.Title then
@@ -682,7 +820,9 @@ function RayVinzUI:_section(page, opts)
 			new("Frame", { Size = UDim2.new(1, -28, 0, 1), Position = UDim2.new(0, 14, 0, 0), BackgroundColor3 = Theme.White, BackgroundTransparency = 0.93, BorderSizePixel = 0, LayoutOrder = #card:GetChildren() }, card)
 		end
 		rowCount = rowCount + 1
-		return new("Frame", { Size = UDim2.new(1, 0, 0, h), AutomaticSize = h == 0 and Enum.AutomaticSize.Y or Enum.AutomaticSize.None, BackgroundTransparency = 1, LayoutOrder = #card:GetChildren() }, card)
+		local f = new("Frame", { Size = UDim2.new(1, 0, 0, h), AutomaticSize = h == 0 and Enum.AutomaticSize.Y or Enum.AutomaticSize.None, BackgroundTransparency = 1, LayoutOrder = #card:GetChildren() }, card)
+		section._lastRow = f
+		return f
 	end
 	-- left label (vertically centered); with a description it stacks title + grey subtext
 	local function placeLabel(r, text, reserve, desc)
@@ -704,10 +844,13 @@ function RayVinzUI:_section(page, opts)
 		-- glassy switch: translucent track, soft white edge, floating knob (no clipped glow halo)
 		local sw = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(46, 28), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), BackgroundColor3 = state and Theme.Green or Theme.Select, BackgroundTransparency = 0.35 }, r); corner(sw, 14); stroke(sw, Theme.White, 0.7, 1)
 		local knob = new("Frame", { Size = UDim2.fromOffset(22, 22), AnchorPoint = Vector2.new(0, 0.5), Position = state and UDim2.new(1, -24, 0.5, 0) or UDim2.new(0, 3, 0.5, 0), BackgroundColor3 = Theme.White, ZIndex = 2 }, sw); corner(knob, 11)
+		local offToken = 0
 		local function set(v, fire)
 			state = v
 			tween(sw, 0.18, { BackgroundColor3 = v and Theme.Green or Theme.Select })
 			tween(knob, 0.18, { Position = v and UDim2.new(1, -24, 0.5, 0) or UDim2.new(0, 3, 0.5, 0) })
+			-- AutoOff = seconds: auto-switch back off after a delay (timer), cancelled if toggled again
+			if o.AutoOff then offToken = offToken + 1; if v then local my = offToken; task.delay(o.AutoOff, function() if my == offToken and state then set(false) end end) end end
 			if fire ~= false and o.Callback then task.spawn(o.Callback, v) end
 		end
 		sw.MouseButton1Click:Connect(function() set(not state) end)
@@ -1271,6 +1414,229 @@ function RayVinzUI:_section(page, opts)
 			{ Title = "Reload HWID", Variant = "Primary", Callback = function() val.Text = get(); if o.Callback then task.spawn(o.Callback, get()) end UI:Notify({ Title = "HWID reloaded", Type = "Success", Icon = "refresh-cw" }) end },
 		} })
 		return { Get = get, Reload = function() val.Text = get() return get() end }
+	end
+
+	-- Checkbox (square check, distinct from the switch-style Toggle)
+	function section:Checkbox(o)
+		o = o or {}; autoCb(o); local state = o.Default or false
+		local r = row(o.Description and 58 or 46); placeLabel(r, o.Title or "Checkbox", 30, o.Description)
+		local bx = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(22, 22), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), BackgroundColor3 = state and Theme.Accent or Theme.Field, BackgroundTransparency = state and 0 or 0.4 }, r); corner(bx, 6); stroke(bx, Theme.White, 0.75, 1)
+		local chk = iconImage(bx, "check", UDim2.fromOffset(14, 14), Theme.AccentText, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5)); chk.Visible = state
+		local function set(v, fire)
+			state = v; chk.Visible = v
+			tween(bx, 0.15, { BackgroundColor3 = v and Theme.Accent or Theme.Field, BackgroundTransparency = v and 0 or 0.4 })
+			if fire ~= false and o.Callback then task.spawn(o.Callback, v) end
+		end
+		bx.MouseButton1Click:Connect(function() set(not state) end)
+		tip(r, o.Tooltip)
+		local ctl = { Set = function(v) set(v) end, Get = function() return state end }
+		registerFlag(o, ctl); return ctl
+	end
+
+	-- Radio group (choose one from a list; stacked rows, filled dot on the selected)
+	function section:Radio(o)
+		o = o or {}; autoCb(o); local opts2 = o.Options or {}; local selected = o.Default
+		local r = row(0); pad(r, 10, 14, 10, 14); vlist(r, 6)
+		if o.Title then local t = ltext(r, o.Title, 13, Theme.Text, FB); t.Size = UDim2.new(1, 0, 0, 16) end
+		local dots = {}
+		local function set(v, fire)
+			selected = v
+			for opt, d in pairs(dots) do
+				local on = opt == selected
+				tween(d.ring, 0.12, { BackgroundTransparency = on and 0 or 1 })
+				d.lbl.TextColor3 = on and Theme.Text or Theme.SubText
+			end
+			if fire ~= false and o.Callback then task.spawn(o.Callback, v) end
+		end
+		for i, opt in ipairs(opts2) do
+			local ob = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1, LayoutOrder = i }, r)
+			local circ = new("Frame", { Size = UDim2.fromOffset(16, 16), Position = UDim2.new(0, 0, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = Theme.Field, BackgroundTransparency = 0.3 }, ob); corner(circ, 8); stroke(circ, Theme.White, 0.7, 1)
+			local ring = new("Frame", { Size = UDim2.fromOffset(8, 8), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = Theme.Accent, BackgroundTransparency = 1 }, circ); corner(ring, 4)
+			local lbl = ltext(ob, tostring(opt), 12, Theme.SubText, FM); lbl.Position = UDim2.new(0, 24, 0, 0); lbl.Size = UDim2.new(1, -24, 1, 0)
+			dots[opt] = { ring = ring, lbl = lbl }
+			ob.MouseButton1Click:Connect(function() set(opt) end)
+		end
+		set(selected, false)
+		local ctl = { Set = function(v) set(v) end, Get = function() return selected end }
+		registerFlag(o, ctl); return ctl
+	end
+
+	-- Segmented control (horizontal pill group, single select)
+	function section:Segmented(o)
+		o = o or {}; autoCb(o); local opts2 = o.Options or {}; local selected = o.Default or opts2[1]
+		local r = row(o.Title and 58 or 44)
+		if o.Title then local t = ltext(r, o.Title, 13, Theme.Text, FM); t.Position = UDim2.new(0, 14, 0, 8); t.Size = UDim2.new(1, -28, 0, 16) end
+		local wrap = new("Frame", { BackgroundColor3 = Theme.Field, BackgroundTransparency = 0.5, Size = UDim2.new(1, -28, 0, 28), Position = o.Title and UDim2.new(0, 14, 0, 26) or UDim2.new(0, 14, 0.5, -14) }, r); corner(wrap, 8); stroke(wrap, Theme.White, 0.85, 1); pad(wrap, 3, 3, 3, 3)
+		new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 3) }, wrap)
+		local n = math.max(#opts2, 1); local segs = {}
+		local function set(v, fire)
+			selected = v
+			for opt, b in pairs(segs) do
+				local on = opt == selected
+				tween(b, 0.14, { BackgroundTransparency = on and 0 or 1 })
+				b.TextColor3 = on and Theme.AccentText or Theme.SubText
+			end
+			if fire ~= false and o.Callback then task.spawn(o.Callback, v) end
+		end
+		for i, opt in ipairs(opts2) do
+			local b = new("TextButton", { Text = tostring(opt), Font = FB, TextSize = 12, TextColor3 = Theme.SubText, AutoButtonColor = false, Size = UDim2.new(1 / n, -3, 1, 0), BackgroundColor3 = Theme.Accent, BackgroundTransparency = 1, LayoutOrder = i }, wrap); corner(b, 6)
+			segs[opt] = b
+			b.MouseButton1Click:Connect(function() set(opt) end)
+		end
+		set(selected, false)
+		local ctl = { Set = function(v) set(v) end, Get = function() return selected end }
+		registerFlag(o, ctl); return ctl
+	end
+
+	-- Stepper (+/- number) — alias of NumberInput
+	function section:Stepper(o) return self:NumberInput(o) end
+
+	-- CodeBlock (monospace text block + Copy button)
+	function section:CodeBlock(o)
+		o = o or {}; local code = o.Code or o.Content or ""
+		local r = row(0); pad(r, 12, 14, 14, 14); vlist(r, 8)
+		local top = new("Frame", { Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1 }, r)
+		local t = ltext(top, o.Title or "Code", 12, Theme.SubText, FB); t.Size = UDim2.new(1, -60, 1, 0)
+		local cp = new("TextButton", { Text = "Copy", Font = FB, TextSize = 11, TextColor3 = Theme.Accent, AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.fromOffset(50, 16), Position = UDim2.new(1, 0, 0, 0), AnchorPoint = Vector2.new(1, 0) }, top)
+		local box = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Color3.fromRGB(16, 16, 22), BackgroundTransparency = 0.2 }, r); corner(box, 8); stroke(box, Theme.White, 0.88, 1); pad(box, 10, 12, 10, 12)
+		local txt = ltext(box, code, 12, Color3.fromRGB(210, 220, 230), Enum.Font.Code); txt.Size = UDim2.new(1, 0, 0, 0); txt.AutomaticSize = Enum.AutomaticSize.Y; txt.TextWrapped = true; txt.TextYAlignment = Enum.TextYAlignment.Top; txt.TextTruncate = Enum.TextTruncate.None
+		cp.MouseButton1Click:Connect(function() pcall(function() if setclipboard then setclipboard(txt.Text) end end); self._window:Notify({ Title = "Copied", Type = "Info", Icon = "copy", Duration = 2 }) end)
+		return { Set = function(v) txt.Text = tostring(v) end, Get = function() return txt.Text end }
+	end
+
+	-- Graph: a live sparkline. ctl.Push(v) adds a point; or pass o.Update (polled every o.Interval s)
+	function section:Graph(o)
+		o = o or {}; local maxPts = o.Points or 40; local h = o.Height or 90
+		local r = row(h + (o.Title and 28 or 14))
+		if o.Title then local t = ltext(r, o.Title, 13, Theme.Text, FM); t.Position = UDim2.new(0, 14, 0, 7); t.Size = UDim2.new(1, -28, 0, 16) end
+		local valLbl = ltext(r, "", 12, Theme.Accent, FB, Enum.TextXAlignment.Right); valLbl.Position = UDim2.new(1, -14, 0, 7); valLbl.AnchorPoint = Vector2.new(1, 0); valLbl.Size = UDim2.fromOffset(90, 16)
+		local area = new("Frame", { Size = UDim2.new(1, -28, 0, h), Position = UDim2.new(0, 14, 0, o.Title and 26 or 8), BackgroundColor3 = Theme.Field, BackgroundTransparency = 0.55 }, r); corner(area, 8); stroke(area, Theme.White, 0.9, 1)
+		local bars = {}
+		for i = 1, maxPts do
+			local b = new("Frame", { Size = UDim2.new(1 / maxPts, -1, 0, 2), Position = UDim2.new((i - 1) / maxPts, 0, 1, 0), AnchorPoint = Vector2.new(0, 1), BackgroundColor3 = Theme.Accent, BorderSizePixel = 0 }, area); corner(b, 1); grad(b, Theme.Accent2, Theme.Accent, 90); bars[i] = b
+		end
+		local data = {}; local minV, maxV = o.Min, o.Max
+		local function redraw()
+			local lo, hi = minV, maxV
+			if not lo or not hi then
+				lo, hi = math.huge, -math.huge
+				for _, v in ipairs(data) do lo = math.min(lo, v); hi = math.max(hi, v) end
+				if lo == math.huge then lo, hi = 0, 1 end
+			end
+			if hi <= lo then hi = lo + 1 end
+			for i = 1, maxPts do
+				local v = data[#data - maxPts + i]
+				local pct = v and clamp((v - lo) / (hi - lo), 0, 1) or 0
+				bars[i].Size = UDim2.new(1 / maxPts, -1, pct, 0)
+			end
+		end
+		local function push(v)
+			v = tonumber(v) or 0
+			table.insert(data, v); if #data > maxPts then table.remove(data, 1) end
+			valLbl.Text = tostring(round(v, o.Rounding or 1)) .. (o.Suffix or ""); redraw()
+		end
+		if o.Update then
+			local trk = self._window._track or function(c) return c end
+			local acc, iv = 0, (o.Interval or 0.5)
+			trk(game:GetService("RunService").Heartbeat:Connect(function(dt)
+				acc = acc + dt; if acc < iv then return end; acc = 0
+				local ok, v = pcall(o.Update); if ok and v then push(v) end
+			end))
+		end
+		return { Push = push, Set = push, Clear = function() data = {}; redraw() end }
+	end
+
+	-- Table: columns + rows, click a header to sort, click a row to select
+	function section:Table(o)
+		o = o or {}; local cols = o.Columns or {}
+		local r = row(0); pad(r, 10, 12, 12, 12); vlist(r, 6)
+		if o.Title then local t = ltext(r, o.Title, 13, Theme.Text, FB); t.Size = UDim2.new(1, 0, 0, 16) end
+		local nc = math.max(#cols, 1)
+		local header = new("Frame", { Size = UDim2.new(1, 0, 0, 24), BackgroundColor3 = Theme.Field, BackgroundTransparency = 0.5 }, r); corner(header, 7); pad(header, 0, 8, 0, 8)
+		new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, SortOrder = Enum.SortOrder.LayoutOrder }, header)
+		local sortCol, sortAsc = nil, true
+		local rowsHolder = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1 }, r); vlist(rowsHolder, 3)
+		local data, selected, rebuild = {}, nil, nil
+		for i, c in ipairs(cols) do
+			local hb = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.new(1 / nc, 0, 1, 0), BackgroundTransparency = 1, LayoutOrder = i }, header)
+			local hl = ltext(hb, tostring(c), 11, Theme.SubText, FB); hl.Size = UDim2.new(1, 0, 1, 0)
+			hb.MouseButton1Click:Connect(function()
+				if sortCol == i then sortAsc = not sortAsc else sortCol = i; sortAsc = true end
+				table.sort(data, function(a, b)
+					local av, bv = a[i], b[i]
+					if tonumber(av) and tonumber(bv) then av, bv = tonumber(av), tonumber(bv) else av, bv = tostring(av), tostring(bv) end
+					if sortAsc then return av < bv else return av > bv end
+				end)
+				rebuild()
+			end)
+		end
+		rebuild = function()
+			for _, c in ipairs(rowsHolder:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
+			for ri, rowData in ipairs(data) do
+				local rb = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 26), BackgroundColor3 = (selected == ri) and Theme.Accent or Theme.Field, BackgroundTransparency = (selected == ri) and 0.72 or 0.6, LayoutOrder = ri }, rowsHolder); corner(rb, 6); pad(rb, 0, 8, 0, 8)
+				new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, SortOrder = Enum.SortOrder.LayoutOrder }, rb)
+				for ci = 1, nc do
+					local cell = new("Frame", { Size = UDim2.new(1 / nc, 0, 1, 0), BackgroundTransparency = 1, LayoutOrder = ci }, rb)
+					ltext(cell, tostring(rowData[ci] ~= nil and rowData[ci] or ""), 11, (selected == ri) and Theme.Text or Theme.SubText, FM).Size = UDim2.new(1, 0, 1, 0)
+				end
+				rb.MouseButton1Click:Connect(function() selected = ri; rebuild(); if o.Callback then task.spawn(o.Callback, rowData, ri) end end)
+			end
+		end
+		if o.Rows then data = o.Rows end
+		rebuild()
+		return {
+			Add = function(vals) table.insert(data, vals); rebuild() end,
+			SetRows = function(list) data = list or {}; selected = nil; rebuild() end,
+			Clear = function() data = {}; selected = nil; rebuild() end,
+			GetSelected = function() return selected and data[selected] or nil end,
+		}
+	end
+
+	-- PlayerDropdown: a dropdown auto-populated with the current players (live on join/leave)
+	function section:PlayerDropdown(o)
+		o = o or {}
+		local function names()
+			local out = {}
+			pcall(function() for _, p in ipairs(Players:GetPlayers()) do table.insert(out, p.Name) end end)
+			if o.IncludeNone then table.insert(out, 1, "None") end
+			return out
+		end
+		o.Options = names(); o.Refresh = names; if o.RefreshButton == nil then o.RefreshButton = true end
+		if o.Title == nil then o.Title = "Player" end
+		local ctl = self:Dropdown(o)
+		local trk = self._window._track or function(c) return c end
+		pcall(function()
+			trk(Players.PlayerAdded:Connect(function() if ctl.Refresh then ctl.Refresh(names()) end end))
+			trk(Players.PlayerRemoving:Connect(function() task.defer(function() if ctl.Refresh then ctl.Refresh(names()) end end) end))
+		end)
+		return ctl
+	end
+
+	-- TeamDropdown: a dropdown of the game's Teams
+	function section:TeamDropdown(o)
+		o = o or {}
+		local function names()
+			local out = {}
+			pcall(function() for _, t in ipairs(game:GetService("Teams"):GetTeams()) do table.insert(out, t.Name) end end)
+			return out
+		end
+		o.Options = names(); o.Refresh = names; if o.RefreshButton == nil then o.RefreshButton = true end
+		if o.Title == nil then o.Title = "Team" end
+		return self:Dropdown(o)
+	end
+
+	-- ThemeEditor: live color pickers for the main theme + accent, with a shareable theme code
+	function section:ThemeEditor()
+		local UI = self._window
+		self:ColorPicker({ Title = "Accent", Default = Theme.Accent, Callback = function(c) UI:SetAccent(c, Theme.Accent2) end })
+		self:ColorPicker({ Title = "Background", Default = Theme.Background, Callback = function(c) UI:SetTheme({ Background = c }) end })
+		self:ColorPicker({ Title = "Card", Default = Theme.Card, Callback = function(c) UI:SetTheme({ Card = c }) end })
+		self:ColorPicker({ Title = "Text", Default = Theme.Text, Callback = function(c) UI:SetTheme({ Text = c }) end })
+		self:ButtonGroup({ Buttons = {
+			{ Title = "Copy theme code", Variant = "Primary", Callback = function() pcall(function() if setclipboard then setclipboard(UI:GetThemeCode()) end end); UI:Notify({ Title = "Theme code copied", Type = "Success", Icon = "copy" }) end },
+			{ Title = "Reset", Callback = function() UI:SetTheme("Dark"); UI:SetAccent("Pink") end },
+		} })
+		return {}
 	end
 
 	return section
@@ -2132,6 +2498,247 @@ function RayVinzUI:AntiSpy(o)
 		end
 	end)
 	return { Scan = function() local r = detectHooks(); if scanSpyGuis() then table.insert(r, "remote spy GUI found") end return r end }
+end
+
+-- ================= Error Inspector =================
+-- Any element callback that errors shows a red toast with the message instead of failing silently.
+function RayVinzUI:_reportError(where, err)
+	local now = os.clock()
+	self._errLast = self._errLast or {}
+	if self._errLast[where] and now - self._errLast[where] < 2 then return end -- throttle spam
+	self._errLast[where] = now
+	local msg = tostring(err):gsub("^.-:%d+:%s*", "")
+	self:Notify({ Title = "Error in " .. tostring(where), Content = msg, Type = "Error", Icon = "alert-octagon", Duration = 6 })
+end
+
+-- ================= Undo / Redo (Ctrl+Z / Ctrl+Y) =================
+function RayVinzUI:_ensureHistoryKeys()
+	if self._histKeys then return end
+	self._histKeys = true
+	local trk = self._track or function(c) return c end
+	trk(UserInputService.InputBegan:Connect(function(inp, gpe)
+		if gpe then return end
+		local ctrl = false
+		pcall(function() ctrl = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl) or UserInputService:IsKeyDown(Enum.KeyCode.LeftMeta) or UserInputService:IsKeyDown(Enum.KeyCode.RightMeta) end)
+		if not ctrl then return end
+		if inp.KeyCode == Enum.KeyCode.Z then self:Undo()
+		elseif inp.KeyCode == Enum.KeyCode.Y then self:Redo() end
+	end))
+end
+function RayVinzUI:_pushHistory(entry, newVal)
+	if self._loading or not entry or entry.kind == "keybind" then return end
+	self._undo = self._undo or {}; self._redo = {}
+	table.insert(self._undo, { entry = entry, old = entry.value, new = newVal })
+	if #self._undo > 60 then table.remove(self._undo, 1) end
+	entry.value = newVal
+	self:_ensureHistoryKeys()
+end
+function RayVinzUI:Undo()
+	local u = self._undo and self._undo[#self._undo]; if not u then return end
+	table.remove(self._undo)
+	self._applyingHistory = true; pcall(function() u.entry.ctl.Set(u.old) end); u.entry.value = u.old; self._applyingHistory = false
+	self._redo = self._redo or {}; table.insert(self._redo, u)
+	self:Notify({ Title = "Undo", Content = u.entry.title or "", Type = "Info", Icon = "rotate-ccw", Duration = 1.5 })
+	return self
+end
+function RayVinzUI:Redo()
+	local r = self._redo and self._redo[#self._redo]; if not r then return end
+	table.remove(self._redo)
+	self._applyingHistory = true; pcall(function() r.entry.ctl.Set(r.new) end); r.entry.value = r.new; self._applyingHistory = false
+	self._undo = self._undo or {}; table.insert(self._undo, r)
+	return self
+end
+
+-- ================= Reduce Motion / Performance Guard =================
+-- ReduceMotion(true) makes every animation instant (accessibility / low-end devices).
+function RayVinzUI:ReduceMotion(on) MotionScale = (on == false) and 1 or 0; return self end
+-- PerformanceGuard watches FPS; below MinFPS it pauses animations + blur, and restores on recovery.
+function RayVinzUI:PerformanceGuard(o)
+	if self._perfGuard then pcall(function() self._perfGuard:Disconnect() end); self._perfGuard = nil end
+	if o == false then MotionScale = 1; return self end
+	o = o or {}
+	local threshold = o.MinFPS or 30
+	local trk = self._track or function(c) return c end
+	local acc, frames, low = 0, 0, false
+	self._perfGuard = trk(game:GetService("RunService").Heartbeat:Connect(function(dt)
+		acc = acc + dt; frames = frames + 1
+		if acc < 1 then return end
+		local fps = frames / math.max(acc, 0.001); acc, frames = 0, 0
+		if fps < threshold and not low then
+			low = true; if self._pgBlur == nil then self._pgBlur = self._blurSize end
+			MotionScale = 0; pcall(function() self:SetBlur(false) end)
+		elseif fps >= threshold + 10 and low then
+			low = false; MotionScale = 1; pcall(function() self:SetBlur(self._pgBlur or 24) end)
+		end
+	end))
+	return self
+end
+
+-- ================= Theme editor helpers / shareable codes =================
+function RayVinzUI:AddTheme(name, tbl) if type(name) == "string" and type(tbl) == "table" then RayVinzUI.ThemePresets[name] = tbl end return self end
+function RayVinzUI:GetThemeCode()
+	local function hex(c) return string.format("%02X%02X%02X", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5)) end
+	local t = {}
+	for _, k in ipairs({ "Background", "Sidebar", "Card", "Elevated", "Select", "Field", "Text", "SubText", "Accent", "Accent2" }) do if Theme[k] then t[k] = hex(Theme[k]) end end
+	local ok, code = pcall(function() return b64encode(game:GetService("HttpService"):JSONEncode(t)) end)
+	return ok and code or ""
+end
+function RayVinzUI:LoadThemeCode(code)
+	local ok, raw = pcall(function() return game:GetService("HttpService"):JSONDecode(b64decode(code)) end)
+	if not ok or type(raw) ~= "table" then return false end
+	local function col(h) return Color3.fromRGB(tonumber(h:sub(1, 2), 16) or 0, tonumber(h:sub(3, 4), 16) or 0, tonumber(h:sub(5, 6), 16) or 0) end
+	local th = {}
+	for k, v in pairs(raw) do if k ~= "Accent" and k ~= "Accent2" then th[k] = col(v) end end
+	self:SetTheme(th)
+	if raw.Accent then self:SetAccent(col(raw.Accent), raw.Accent2 and col(raw.Accent2) or nil) end
+	return true
+end
+
+-- ================= Shareable config "profile codes" =================
+-- GetConfigCode() -> a base64 string of all current element values. LoadConfigCode(code) applies it.
+function RayVinzUI:GetConfigCode()
+	local data = {}
+	for flag, e in pairs(self._flags or ActiveFlags or {}) do
+		local ok, v = pcall(e.ctl.Get)
+		if ok then
+			if e.kind == "keybind" then v = v and v.Name
+			elseif e.kind == "color" and v then v = { R = v.R, G = v.G, B = v.B } end
+			data[flag] = v
+		end
+	end
+	local ok, code = pcall(function() return b64encode(game:GetService("HttpService"):JSONEncode(data)) end)
+	return ok and code or ""
+end
+function RayVinzUI:LoadConfigCode(code)
+	local ok, data = pcall(function() return game:GetService("HttpService"):JSONDecode(b64decode(code)) end)
+	if not ok or type(data) ~= "table" then return false end
+	self._loading = true; task.delay(0.8, function() self._loading = false end)
+	for flag, v in pairs(data) do
+		local e = (self._flags or ActiveFlags or {})[flag]
+		if e then
+			if e.kind == "keybind" then pcall(function() e.ctl.Set(Enum.KeyCode[v]) end)
+			elseif e.kind == "color" and type(v) == "table" then pcall(function() e.ctl.Set(Color3.new(v.R, v.G, v.B)) end)
+			else pcall(function() e.ctl.Set(v) end) end
+		end
+	end
+	return true
+end
+
+-- ================= Spotlight / Command palette (Ctrl/Cmd+K) =================
+-- Register custom actions with UI:Command({ Title=, Description=, Icon=, Callback= }).
+function RayVinzUI:Command(o)
+	o = o or {}
+	self._commands = self._commands or {}
+	table.insert(self._commands, { title = o.Title or "Command", desc = o.Description or o.Desc, icon = o.Icon, callback = o.Callback })
+	return self
+end
+function RayVinzUI:_jumpTo(tab, inst)
+	self:_select(tab)
+	if not inst then return end
+	task.defer(function()
+		pcall(function()
+			local target = tab._page.CanvasPosition.Y + (inst.AbsolutePosition.Y - tab._page.AbsolutePosition.Y) - 60
+			tab._page.CanvasPosition = Vector2.new(0, math.max(target, 0))
+		end)
+		local rowi = inst
+		while rowi.Parent and rowi.Parent ~= tab._page do rowi = rowi.Parent end
+		if rowi and rowi:IsA("GuiObject") then
+			local hl = stroke(rowi, Theme.Accent, 0, 2)
+			task.delay(0.05, function() tween(hl, 0.9, { Transparency = 1 }) end)
+			task.delay(1, function() pcall(function() hl:Destroy() end) end)
+		end
+	end)
+end
+-- Build (once) the Spotlight overlay and bind Ctrl/Cmd+K (+ optional opts.Key). opts.Open opens it now.
+function RayVinzUI:Spotlight(opts)
+	opts = opts or {}
+	if self._spotlight then if opts.Open then self._spotlight.open() end return self._spotlight end
+	local gui = self.Gui or ActiveGui
+	local overlay = new("Frame", { Name = "Spotlight", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, Visible = false, ZIndex = 95 }, gui)
+	local bgBtn = new("TextButton", { Text = "", AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 95 }, overlay)
+	local panel = new("Frame", { Size = UDim2.fromOffset(460, 54), Position = UDim2.new(0.5, 0, 0, 120), AnchorPoint = Vector2.new(0.5, 0), BackgroundColor3 = Theme.Elevated, BackgroundTransparency = 0.04, ZIndex = 96 }, overlay); corner(panel, 14); stroke(panel, Theme.White, 0.7, 1.2); glassSheen(panel, 14, 96)
+	iconImage(panel, "search", UDim2.fromOffset(18, 18), Theme.SubText, UDim2.new(0, 16, 0.5, 0), Vector2.new(0, 0.5)).ZIndex = 98
+	local input = new("TextBox", { BackgroundTransparency = 1, Size = UDim2.new(1, -56, 1, 0), Position = UDim2.new(0, 44, 0, 0), PlaceholderText = opts.Placeholder or "Search settings & commands…  (e.g. walk speed 50, godmode on)", PlaceholderColor3 = Theme.Muted, Text = "", TextColor3 = Theme.Text, Font = FM, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false, ZIndex = 98 }, panel)
+	local results = new("ScrollingFrame", { Size = UDim2.fromOffset(460, 0), AutomaticSize = Enum.AutomaticSize.Y, Position = UDim2.new(0.5, 0, 0, 182), AnchorPoint = Vector2.new(0.5, 0), BackgroundColor3 = Theme.Elevated, BackgroundTransparency = 0.06, BorderSizePixel = 0, ScrollBarThickness = 3, ScrollBarImageColor3 = Theme.Muted, CanvasSize = UDim2.new(), Visible = false, ZIndex = 96 }, overlay); corner(results, 12); stroke(results, Theme.White, 0.8, 1); pad(results, 6, 6, 6, 6); vlist(results, 3)
+	local items, firstRun = {}, nil
+	local function close() overlay.Visible = false; input.Text = ""; firstRun = nil end
+	local function open() overlay.Visible = true; results.Visible = false; tween(overlay, 0.15, { BackgroundTransparency = 0.45 }); pcall(function() input:CaptureFocus() end) end
+	local function tabOfPage(page) for _, t in ipairs(self._tabs) do if t._page == page then return t end end end
+	local function addItem(i, icon, title, sub, run)
+		local b = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = Theme.Accent, BackgroundTransparency = 1, LayoutOrder = i, ZIndex = 97 }, results); corner(b, 8)
+		iconImage(b, icon or "chevron-right", UDim2.fromOffset(15, 15), Theme.SubText, UDim2.new(0, 10, 0.5, 0), Vector2.new(0, 0.5)).ZIndex = 98
+		local tl = ltext(b, title, 13, Theme.Text, FM); tl.Position = UDim2.new(0, 34, 0, sub and 4 or 0); tl.Size = UDim2.new(1, -44, 0, sub and 16 or 36); tl.ZIndex = 98
+		if sub then local sl = ltext(b, sub, 10, Theme.Muted, F); sl.Position = UDim2.new(0, 34, 0, 19); sl.Size = UDim2.new(1, -44, 0, 12); sl.ZIndex = 98 end
+		b.MouseEnter:Connect(function() b.BackgroundTransparency = 0.85 end)
+		b.MouseLeave:Connect(function() b.BackgroundTransparency = 1 end)
+		b.MouseButton1Click:Connect(run)
+		table.insert(items, b); return b
+	end
+	local function refresh()
+		for _, it in ipairs(items) do pcall(function() it:Destroy() end) end
+		items = {}; firstRun = nil
+		local q = string.lower(input.Text):gsub("%s+$", "")
+		if q == "" then results.Visible = false; return end
+		local base, valTok = q:match("^(.-)%s+([%w%.]+)$")
+		local matches = {}
+		local function consider(kind, label, data)
+			local hay = string.lower(label or "")
+			local hit = string.find(hay, q, 1, true)
+			local bHit = base and string.find(hay, base, 1, true)
+			if hit or bHit then table.insert(matches, { kind = kind, label = label, data = data, rank = hit and 0 or 1 }) end
+		end
+		for _, c in ipairs(self._commands or {}) do consider("cmd", c.title, c) end
+		for _, e in ipairs(self._controls or {}) do if e.title then consider("ctl", e.title, e) end end
+		for _, t in ipairs(self._tabs) do consider("tab", t._label.Text, t) end
+		table.sort(matches, function(a, b) return a.rank < b.rank end)
+		local n = 0
+		for _, m in ipairs(matches) do
+			n = n + 1; if n > 8 then break end
+			local icon, title, sub, run
+			if m.kind == "cmd" then
+				icon, title, sub = m.data.icon or "terminal", m.data.title, m.data.desc or "Command"
+				run = function() close(); if m.data.callback then task.spawn(m.data.callback) end end
+			elseif m.kind == "tab" then
+				icon, title, sub = "layout-grid", m.label, "Go to tab"
+				run = function() close(); self:_select(m.data) end
+			else
+				local e = m.data; icon, title, sub = "sliders-horizontal", e.title, e.section and ("in " .. e.section) or "Setting"
+				run = function()
+					close()
+					local _, cur = pcall(e.ctl.Get)
+					if valTok and e.ctl.Set then
+						local num = tonumber(valTok)
+						if num ~= nil and type(cur) == "number" then pcall(function() e.ctl.Set(num) end); self:Notify({ Title = e.title, Content = "set to " .. tostring(num), Type = "Success", Icon = "check", Duration = 2 }); return end
+						local bv = (valTok == "on" or valTok == "true" or valTok == "yes") and true or ((valTok == "off" or valTok == "false" or valTok == "no") and false or nil)
+						if bv ~= nil and type(cur) == "boolean" then pcall(function() e.ctl.Set(bv) end); self:Notify({ Title = e.title, Content = bv and "on" or "off", Type = "Success", Icon = "check", Duration = 2 }); return end
+					end
+					if type(cur) == "boolean" and e.ctl.Set then
+						pcall(function() e.ctl.Set(not cur) end); self:Notify({ Title = e.title, Content = (not cur) and "on" or "off", Type = "Info", Icon = "check", Duration = 2 })
+					else
+						local tb = tabOfPage(e.page); if tb then self:_jumpTo(tb, e.inst) end
+					end
+				end
+			end
+			addItem(n, icon, title, sub, run)
+			if not firstRun then firstRun = run end
+		end
+		results.Visible = n > 0
+	end
+	input:GetPropertyChangedSignal("Text"):Connect(refresh)
+	bgBtn.MouseButton1Click:Connect(close)
+	local trk = self._track or function(c) return c end
+	trk(UserInputService.InputBegan:Connect(function(inp, gpe)
+		if inp.KeyCode == Enum.KeyCode.Escape and overlay.Visible then close(); return end
+		if inp.KeyCode == Enum.KeyCode.Return and overlay.Visible and firstRun then firstRun(); return end
+		if gpe then return end
+		if opts.Key and inp.KeyCode == opts.Key then open(); return end
+		local ctrl = false
+		pcall(function() ctrl = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl) or UserInputService:IsKeyDown(Enum.KeyCode.LeftMeta) or UserInputService:IsKeyDown(Enum.KeyCode.RightMeta) end)
+		if ctrl and inp.KeyCode == Enum.KeyCode.K then open() end
+	end))
+	self._spotlight = { open = open, close = close, refresh = refresh, instance = overlay }
+	if opts.Open then open() end
+	return self._spotlight
 end
 
 return setmetatable({}, { __index = RayVinzUI })

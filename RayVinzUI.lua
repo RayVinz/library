@@ -254,6 +254,24 @@ function RayVinzUI:LoadLucide(url)
 	if ok and p then self:SetIcons(p) return true end
 	return false
 end
+-- one-call loader: Lucide (for built-in UI icons) + Craft 6000-icon pack, merged.
+-- Lucide handles UI chrome (search/chevron/close), Craft handles everything else.
+-- Craft names win; Lucide names fall back. Call ONCE before CreateWindow.
+RayVinzUI.CraftURL = "https://raw.githubusercontent.com/RayVinz/library/refs/heads/main/craft_pack.lua"
+function RayVinzUI:LoadIcons(craftUrl)
+	craftUrl = craftUrl or RayVinzUI.CraftURL
+	local lucide, craft
+	pcall(function() lucide = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/Icons/main/Main-v2.lua"))() end)
+	pcall(function() craft = loadstring(game:HttpGet(craftUrl .. "?cb=" .. tostring(tick())))() end)
+	if craft and lucide then
+		self:SetIcons(setmetatable({
+			SetIconsType = lucide.SetIconsType,
+			Icon = function(n) if lucide.Icon then local ok, r = pcall(lucide.Icon, n); if ok and r and r[1] then return r end end end,
+		}, { __index = craft }))
+	elseif craft then self:SetIcons(craft)
+	elseif lucide then self:SetIcons(lucide) end
+	return (craft or lucide) ~= nil
+end
 
 -- ---------- Window ----------
 function RayVinzUI:CreateWindow(opts)

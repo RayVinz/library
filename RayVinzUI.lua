@@ -214,6 +214,7 @@ end
 local IconPack = nil
 local ActiveGui = nil
 local ActiveFlags = nil
+local ActiveWindow = nil -- last CreateWindow (so UI:Spotlight()/UI:Command() find tabs/controls)
 local function resolveIcon(icon)
 	if not icon or icon == "" then return nil end
 	if type(icon) == "number" then return { Image = "rbxassetid://" .. icon } end
@@ -254,7 +255,9 @@ function RayVinzUI:LoadLucide(url)
 	if ok and p then self:SetIcons(p) return true end
 	return false
 end
--- one-call loader: Lucide (built-in UI icons) + Craft 6000-icon pack, merged. Call ONCE before CreateWindow.
+-- one-call loader: Lucide (for built-in UI icons) + Craft 6000-icon pack, merged.
+-- Lucide handles UI chrome (search/chevron/close), Craft handles everything else.
+-- Craft names win; Lucide names fall back. Call ONCE before CreateWindow.
 RayVinzUI.CraftURL = "https://raw.githubusercontent.com/RayVinz/library/refs/heads/main/craft_pack.lua"
 function RayVinzUI:LoadIcons(craftUrl)
 	craftUrl = craftUrl or RayVinzUI.CraftURL
@@ -306,7 +309,7 @@ function RayVinzUI:CreateWindow(opts)
 	end
 	cleanupOld() -- destroy any previous RayVinzUI so re-running never stacks windows/buttons
 	local gui = new("ScreenGui", { Name = "RayVinzUI", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true }, guiParent())
-	self.Gui = gui; ActiveGui = gui
+	self.Gui = gui; ActiveGui = gui; ActiveWindow = self
 	local W, H = opts.Width or 660, opts.Height or 460
 
 	-- holder (positioned/dragged) -> shadow + rounded window inside
@@ -2654,8 +2657,9 @@ end
 -- Register custom actions with UI:Command({ Title=, Description=, Icon=, Callback= }).
 function RayVinzUI:Command(o)
 	o = o or {}
-	self._commands = self._commands or {}
-	table.insert(self._commands, { title = o.Title or "Command", desc = o.Description or o.Desc, icon = o.Icon, callback = o.Callback })
+	local win = (self._tabs and self) or ActiveWindow or self -- commands live on the window
+	win._commands = win._commands or {}
+	table.insert(win._commands, { title = o.Title or "Command", desc = o.Description or o.Desc, icon = o.Icon, callback = o.Callback })
 	return self
 end
 function RayVinzUI:_jumpTo(tab, inst)
@@ -2678,6 +2682,7 @@ end
 -- Build (once) the Spotlight overlay and bind Ctrl/Cmd+K (+ optional opts.Key). opts.Open opens it now.
 function RayVinzUI:Spotlight(opts)
 	opts = opts or {}
+	self = (self._tabs and self) or ActiveWindow or self -- resolve to the window (tabs/controls live there)
 	if self._spotlight then if opts.Open then self._spotlight.open() end return self._spotlight end
 	local gui = self.Gui or ActiveGui
 	local overlay = new("Frame", { Name = "Spotlight", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, Visible = false, ZIndex = 95 }, gui)
@@ -2715,7 +2720,7 @@ function RayVinzUI:Spotlight(opts)
 		end
 		for _, c in ipairs(self._commands or {}) do consider("cmd", c.title, c) end
 		for _, e in ipairs(self._controls or {}) do if e.title then consider("ctl", e.title, e) end end
-		for _, t in ipairs(self._tabs) do consider("tab", t._label.Text, t) end
+		for _, t in ipairs(self._tabs or {}) do consider("tab", t._label.Text, t) end
 		table.sort(matches, function(a, b) return a.rank < b.rank end)
 		local n = 0
 		for _, m in ipairs(matches) do

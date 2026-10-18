@@ -782,6 +782,7 @@ function RayVinzUI:_section(page, opts)
 		o = o or {}; autoCb(o); local options = o.Options or {}; local multi = o.Multi; local selected = multi and (o.Default or {}) or o.Default
 		local r = row(o.Description and 58 or 48); placeLabel(r, o.Title or "Dropdown", 150, o.Description)
 		local box = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(150, 30), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), BackgroundColor3 = Theme.Field, BackgroundTransparency = 0.4 }, r); corner(box, 9); stroke(box, Theme.White, 0.8, 1)
+		local boxIcon = new("ImageLabel", { BackgroundTransparency = 1, Visible = false, Size = UDim2.fromOffset(16, 16), Position = UDim2.new(0, 9, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), ImageColor3 = Theme.Text, ZIndex = 2 }, box)
 		local valTxt = ltext(box, "Select...", 12, Theme.Text, FM); valTxt.Position = UDim2.new(0, 10, 0, 0); valTxt.Size = UDim2.new(1, -28, 1, 0)
 		iconImage(box, "chevron-down", UDim2.fromOffset(12, 12), Theme.SubText, UDim2.new(1, -8, 0.5, 0), Vector2.new(1, 0.5))
 		local reposition, closeList, doRefresh
@@ -797,14 +798,37 @@ function RayVinzUI:_section(page, opts)
 		local catcher = new("TextButton", { Name = "DropCatcher", Text = "", AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 49 }, self._gui)
 		local tx, ty = 0, 0
 		local searchQuery = ""
-		local function display() if multi then valTxt.Text = #selected > 0 and table.concat(selected, ", ") or "None" else valTxt.Text = selected and tostring(selected) or "Select..." end end
+		local rightPad = o.RefreshButton and 46 or 28
+		local function display()
+			if multi then
+				valTxt.Text = #selected > 0 and table.concat(selected, ", ") or "None"
+				boxIcon.Visible = false
+			else
+				valTxt.Text = selected and tostring(selected) or "Select..."
+				local ico = o.Icons and selected and o.Icons[selected]
+				local r2 = ico and resolveIcon(ico)
+				if r2 then
+					boxIcon.Image = r2.Image
+					boxIcon.ImageRectSize = r2.ImageRectSize or Vector2.new(0, 0)
+					boxIcon.ImageRectOffset = r2.ImageRectOffset or Vector2.new(0, 0)
+					boxIcon.Visible = true
+				else boxIcon.Visible = false end
+			end
+			local left = boxIcon.Visible and 32 or 10
+			valTxt.Position = UDim2.new(0, left, 0, 0)
+			valTxt.Size = UDim2.new(1, -(left + rightPad), 1, 0)
+		end
 		local function rebuild()
 			for _, c in ipairs(list:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
 			for i, opt in ipairs(options) do
 				if searchQuery == "" or string.find(string.lower(tostring(opt)), searchQuery, 1, true) then
 					local chosen = multi and (indexOf(selected, opt) ~= nil) or (selected == opt)
 					local ob = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Theme.Accent, BackgroundTransparency = chosen and 0.82 or 1, LayoutOrder = i + 1 }, list); corner(ob, 7)
-					local ol = ltext(ob, tostring(opt), 12, chosen and Theme.Text or Theme.SubText, FM); ol.Position = UDim2.new(0, 10, 0, 0); ol.Size = UDim2.new(1, -20, 1, 0)
+					-- optional per-option icon: o.Icons = { [optionText] = "iconName"/rbxassetid }
+					local ico = o.Icons and o.Icons[opt]
+					local tx = 10
+					if ico then iconImage(ob, ico, UDim2.fromOffset(16, 16), chosen and Theme.Text or Theme.SubText, UDim2.new(0, 9, 0.5, 0), Vector2.new(0, 0.5)); tx = 33 end
+					local ol = ltext(ob, tostring(opt), 12, chosen and Theme.Text or Theme.SubText, FM); ol.Position = UDim2.new(0, tx, 0, 0); ol.Size = UDim2.new(1, -(tx + 10), 1, 0)
 					ob.MouseButton1Click:Connect(function()
 						if multi then local idx = indexOf(selected, opt) if idx then table.remove(selected, idx) else table.insert(selected, opt) end rebuild() else selected = opt closeList() end
 						display(); if o.Callback then task.spawn(o.Callback, selected) end

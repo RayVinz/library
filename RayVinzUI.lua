@@ -620,33 +620,43 @@ end
 
 -- ---------- Tab ----------
 function RayVinzUI:Tab(opts)
-	opts = opts or {}; local tab = {}
-	local item = new("TextButton", { Name = "Tab", Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 34), BackgroundColor3 = Theme.Accent, BackgroundTransparency = 1, LayoutOrder = #self.Sidebar:GetChildren() }, self.Sidebar)
-	corner(item, 8)
-	local tbar = new("Frame", { Size = UDim2.fromOffset(3, 0), Position = UDim2.new(0, 2, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = Theme.Accent, BorderSizePixel = 0, ZIndex = 2 }, item); corner(tbar, 2)
-	local ic = iconImage(item, opts.Icon, UDim2.fromOffset(16, 16), Theme.SubText, UDim2.new(0, 12, 0.5, 0), Vector2.new(0, 0.5)); ic.ZIndex = 2
-	local lb = ltext(item, opts.Title or "Tab", 13, Theme.SubText, FM); lb.Position = UDim2.new(0, 38, 0, 0); lb.Size = UDim2.new(1, -48, 1, 0); lb.ZIndex = 2
-	local dot = new("Frame", { Name = "Dot", Size = UDim2.fromOffset(7, 7), Position = UDim2.new(1, -10, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), BackgroundColor3 = Theme.Error, BorderSizePixel = 0, Visible = false, ZIndex = 3 }, item); corner(dot, 4)
-	-- badge: a small accent pill with a number/text on the right of the tab (like unread counts)
-	local badge = new("Frame", { Name = "Badge", Size = UDim2.fromOffset(18, 16), Position = UDim2.new(1, -8, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), BackgroundColor3 = Theme.Accent, Visible = false, ZIndex = 3 }, item); corner(badge, 8)
-	local badgeTxt = ltext(badge, "", 10, Theme.AccentText, FB, Enum.TextXAlignment.Center); badgeTxt.Size = UDim2.fromScale(1, 1); badgeTxt.ZIndex = 4
-	tab._bar = tbar; tab._dot = dot; tab._badge = badge
-	function tab:SetDot(on) self._dot.Visible = on and true or false end
-	function tab:SetBadge(v)
-		if v == nil or v == false or v == "" then self._badge.Visible = false; return end
-		badgeTxt.Text = tostring(v); self._badge.Visible = true
-		self._badge.Size = UDim2.fromOffset(math.max(18, #tostring(v) * 7 + 10), 16)
-	end
-	local page = new("ScrollingFrame", { Name = "Page", Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false,
-		ScrollBarThickness = 3, ScrollBarImageColor3 = Theme.Muted, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y }, self.Content)
-	pad(page, 18, 18, 18, 18); vlist(page, 16)
-	tab._item, tab._icon, tab._label, tab._page, tab._window = item, ic, lb, page, self
-	function tab:Section(s) return self._window:_section(self._page, s) end
-	function tab:Select() self._window:_select(self) end -- เปิดหน้านี้เอง
-	item.MouseButton1Click:Connect(function() self:_select(tab) end)
-	table.insert(self._tabs, tab)
-	if #self._tabs == 1 or opts.Default then self:_select(tab) end -- tab แรก หรือ Default = true = หน้าแรก
-	return tab
+    opts = opts or {}; local tab = {}
+    local layoutOrderCount = 0
+    pcall(function()
+        layoutOrderCount = #self.Sidebar:GetChildren()
+    end)
+
+    local item = new("TextButton", { Name = "Tab", Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 34), BackgroundColor3 = Theme.Accent, BackgroundTransparency = 1, LayoutOrder = layoutOrderCount }, self.Sidebar)
+    corner(item, 8)
+    
+    local tbar = new("Frame", { Size = UDim2.fromOffset(3, 0), Position = UDim2.new(0, 2, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = Theme.Accent, BorderSizePixel = 0, ZIndex = 2 }, item); corner(tbar, 2)
+    local ic = iconImage(item, opts.Icon, UDim2.fromOffset(16, 16), Theme.SubText, UDim2.new(0, 12, 0.5, 0), Vector2.new(0, 0.5)); ic.ZIndex = 2
+    local lb = ltext(item, opts.Title or "Tab", 13, Theme.SubText, FM); lb.Position = UDim2.new(0, 38, 0, 0); lb.Size = UDim2.new(1, -48, 1, 0); lb.ZIndex = 2
+    local dot = new("Frame", { Name = "Dot", Size = UDim2.fromOffset(7, 7), Position = UDim2.new(1, -10, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), BackgroundColor3 = Theme.Error, BorderSizePixel = 0, Visible = false, ZIndex = 3 }, item); corner(dot, 4)
+    
+    local badge = new("Frame", { Name = "Badge", Size = UDim2.fromOffset(18, 16), Position = UDim2.new(1, -8, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), BackgroundColor3 = Theme.Accent, Visible = false, ZIndex = 3 }, item); corner(badge, 8)
+    local badgeTxt = ltext(badge, "", 10, Theme.AccentText, FB, Enum.TextXAlignment.Center); badgeTxt.Size = UDim2.fromScale(1, 1); badgeTxt.ZIndex = 4
+    
+    tab._bar = tbar; tab._dot = dot; tab._badge = badge
+    function tab:SetDot(on) self._dot.Visible = on and true or false end
+    function tab:SetBadge(v)
+        if v == nil or v == false or v == "" then self._badge.Visible = false; return end
+        badgeTxt.Text = tostring(v); self._badge.Visible = true
+        self._badge.Size = UDim2.fromOffset(math.max(18, #tostring(v) * 7 + 10), 16)
+    end
+    
+    local page = new("ScrollingFrame", { Name = "Page", Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false,
+        ScrollBarThickness = 3, ScrollBarImageColor3 = Theme.Muted, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y }, self.Content)
+    pad(page, 18, 18, 18, 18); vlist(page, 16)
+    
+    tab._item, tab._icon, tab._label, tab._page, tab._window = item, ic, lb, page, self
+    function tab:Section(s) return self._window:_section(self._page, s) end
+    function tab:Select() self._window:_select(self) end
+    
+    item.MouseButton1Click:Connect(function() self:_select(tab) end)
+    table.insert(self._tabs, tab)
+    if #self._tabs == 1 or opts.Default then self:_select(tab) end
+    return tab
 end
 function RayVinzUI:_select(tab)
 	for _, t in ipairs(self._tabs) do
